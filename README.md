@@ -45,6 +45,20 @@ Most frameworks help you *call* agents. Clowder helps them *work together*.
 | **MCP Integration** | Model Context Protocol for tool sharing across agents, including non-Claude models via callback bridge |
 | **Collaborative Discipline** | Automated SOP: design gates, quality checks, vision guardianship, merge protocols |
 
+## Supported Agents
+
+Clowder is model-agnostic. Currently supported agent CLIs:
+
+| Agent CLI | Model Family | Integration | Status |
+|-----------|-------------|-------------|--------|
+| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | Claude (Opus / Sonnet / Haiku) | Native (Agent SDK) | Shipped |
+| [Codex CLI](https://github.com/openai/codex) | GPT / Codex | MCP Callback Bridge | Shipped |
+| [Gemini CLI](https://github.com/google-gemini/gemini-cli) | Gemini | MCP Callback Bridge | Shipped |
+| [Antigravity](https://github.com/nolanzandi/antigravity-cli) | Multi-model | CLI subprocess | Shipped |
+| [opencode](https://github.com/sst/opencode) | Multi-model | CLI subprocess | In Progress |
+
+> Clowder doesn't replace your agent CLI — it's the layer *above* it that makes agents work as a team.
+
 ## The Iron Laws
 
 Four non-negotiable safety constraints — enforced at both prompt and code layer:
@@ -241,6 +255,20 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 | **Skills 框架** | 按需加载 prompt 系统。agent 需要时才加载专门技能（TDD、调试、审查） |
 | **MCP 集成** | Model Context Protocol 跨 agent 工具共享，含非 Claude 模型的回调桥接 |
 | **协作纪律** | 自动化 SOP：设计门禁、质量检查、愿景守护、合并协议 |
+
+## 支持的 Agent
+
+Clowder 不绑定模型。当前支持的 Agent CLI：
+
+| Agent CLI | 模型家族 | 接入方式 | 状态 |
+|-----------|---------|---------|------|
+| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | Claude (Opus / Sonnet / Haiku) | 原生（Agent SDK） | 已发布 |
+| [Codex CLI](https://github.com/openai/codex) | GPT / Codex | MCP 回调桥接 | 已发布 |
+| [Gemini CLI](https://github.com/google-gemini/gemini-cli) | Gemini | MCP 回调桥接 | 已发布 |
+| [Antigravity](https://github.com/nolanzandi/antigravity-cli) | 多模型 | CLI 子进程 | 已发布 |
+| [opencode](https://github.com/sst/opencode) | 多模型 | CLI 子进程 | 进行中 |
+
+> Clowder 不替代你的 Agent CLI — 它是 CLI *之上*的那一层，让 agent 们作为团队协作。
 
 ## 四条铁律
 
