@@ -303,12 +303,18 @@ export function ChatContainer({ threadId }: ChatContainerProps) {
     for (const entry of queueRaw) {
       if (entry.status !== 'queued') continue;
       if (!entry.content) continue;
-      // #20: Always keep the full content string so single messages with newlines
-      // (Shift+Enter) still match. Additionally, split merged queue entries on "\n"
-      // so each individual optimistic bubble can match its own segment.
+      // #20: Keep full content for exact single-message match (including multiline).
       set.add(entry.content);
-      for (const segment of entry.content.split('\n')) {
-        if (segment) set.add(segment);
+      const lines = entry.content.split('\n');
+      // Individual line segments for merged single-line messages.
+      for (const line of lines) {
+        if (line) set.add(line);
+      }
+      // Merged entries are built by prefix-appending ("\n" + new), so pre-merge
+      // content is always a \n-boundary prefix. Add all prefixes so multiline
+      // messages sent before a merge still match their optimistic bubbles.
+      for (let i = 1; i < lines.length; i++) {
+        set.add(lines.slice(0, i).join('\n'));
       }
     }
     return set;
