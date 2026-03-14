@@ -23,9 +23,28 @@ function buildQueuedMessageIds(queue: QueueEntry[]): Set<string> {
   return ids;
 }
 
+/** Mirrors the queuedContents logic in ChatContainer (split merged content on \n) */
+function buildQueuedContents(queue: QueueEntry[]): Set<string> {
+  const set = new Set<string>();
+  for (const entry of queue) {
+    if (entry.status !== 'queued') continue;
+    if (!entry.content) continue;
+    for (const segment of entry.content.split('\n')) {
+      if (segment) set.add(segment);
+    }
+  }
+  return set;
+}
+
 /** Mirrors the renderItems filtering logic in ChatContainer */
-function filterMessages(messages: ChatMessage[], queuedIds: Set<string>): ChatMessage[] {
-  return messages.filter((m) => !queuedIds.has(m.id));
+function filterMessages(
+  messages: ChatMessage[],
+  queuedIds: Set<string>,
+  queuedContents: Set<string> = new Set(),
+): ChatMessage[] {
+  return messages.filter(
+    (m) => !queuedIds.has(m.id) && !(m.id.startsWith('user-') && m.type === 'user' && queuedContents.has(m.content)),
+  );
 }
 
 const NOW = Date.now();
@@ -147,5 +166,36 @@ describe('#20: queued message filtering', () => {
     const visible = filterMessages(messages, queuedIds);
 
     expect(visible.map((m) => m.id)).toEqual(['m1', 'm2']);
+  });
+
+  // ── P1 fix: merged queue content must match individual optimistic bubbles ──
+
+  it('hides optimistic bubbles whose content matches segments of a merged queue entry', () => {
+    // Two optimistic user messages with individual content
+    const messages = [
+      { id: 'user-aaa', type: 'user', content: 'hello', timestamp: NOW } as ChatMessage,
+      { id: 'user-bbb', type: 'user', content: 'world', timestamp: NOW } as ChatMessage,
+      makeMsg('m3', 'assistant'),
+    ];
+    // Backend merged them into one queue entry: "hello\nworld"
+    const queue = [makeQueueEntry({ content: 'hello\nworld', messageId: null })];
+    const queuedIds = buildQueuedMessageIds(queue);
+    const queuedContents = buildQueuedContents(queue);
+    const visible = filterMessages(messages, queuedIds, queuedContents);
+
+    // Both optimistic bubbles should be hidden; assistant message stays
+    expect(visible.map((m) => m.id)).toEqual(['m3']);
+  });
+
+  it('does not hide non-optimistic messages via content match', () => {
+    // Server-ID message should NOT be caught by content fallback
+    const messages = [{ id: 'server-id-1', type: 'user', content: 'hello', timestamp: NOW } as ChatMessage];
+    const queue = [makeQueueEntry({ content: 'hello', messageId: null })];
+    const queuedIds = buildQueuedMessageIds(queue);
+    const queuedContents = buildQueuedContents(queue);
+    const visible = filterMessages(messages, queuedIds, queuedContents);
+
+    // Server-ID messages don't start with "user-", so content match doesn't apply
+    expect(visible.map((m) => m.id)).toEqual(['server-id-1']);
   });
 });
