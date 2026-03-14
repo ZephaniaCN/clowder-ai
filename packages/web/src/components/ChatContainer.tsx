@@ -310,11 +310,15 @@ export function ChatContainer({ threadId }: ChatContainerProps) {
       for (const line of lines) {
         if (line) set.add(line);
       }
-      // Merged entries are built by prefix-appending ("\n" + new), so pre-merge
-      // content is always a \n-boundary prefix. Add all prefixes so multiline
-      // messages sent before a merge still match their optimistic bubbles.
-      for (let i = 1; i < lines.length; i++) {
-        set.add(lines.slice(0, i).join('\n'));
+      // Merged entries concatenate content with "\n". A multiline message can appear
+      // as any contiguous run of lines (prefix, suffix, or middle). Add all contiguous
+      // multi-line runs so optimistic bubbles match regardless of merge position.
+      if (lines.length > 1) {
+        for (let start = 0; start < lines.length; start++) {
+          for (let end = start + 2; end <= lines.length; end++) {
+            set.add(lines.slice(start, end).join('\n'));
+          }
+        }
       }
     }
     return set;

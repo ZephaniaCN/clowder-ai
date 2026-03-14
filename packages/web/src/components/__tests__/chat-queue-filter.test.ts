@@ -23,7 +23,7 @@ function buildQueuedMessageIds(queue: QueueEntry[]): Set<string> {
   return ids;
 }
 
-/** Mirrors the queuedContents logic in ChatContainer (full + segments + prefixes) */
+/** Mirrors the queuedContents logic in ChatContainer (full + segments + all contiguous runs) */
 function buildQueuedContents(queue: QueueEntry[]): Set<string> {
   const set = new Set<string>();
   for (const entry of queue) {
@@ -34,8 +34,12 @@ function buildQueuedContents(queue: QueueEntry[]): Set<string> {
     for (const line of lines) {
       if (line) set.add(line);
     }
-    for (let i = 1; i < lines.length; i++) {
-      set.add(lines.slice(0, i).join('\n'));
+    if (lines.length > 1) {
+      for (let start = 0; start < lines.length; start++) {
+        for (let end = start + 2; end <= lines.length; end++) {
+          set.add(lines.slice(start, end).join('\n'));
+        }
+      }
     }
   }
   return set;
@@ -230,6 +234,21 @@ describe('#20: queued message filtering', () => {
     const visible = filterMessages(messages, queuedIds, queuedContents);
 
     // "a\nb" matches as a \n-boundary prefix; "c" matches as a segment
+    expect(visible.map((m) => m.id)).toEqual([]);
+  });
+
+  it('hides multiline optimistic bubble merged as a suffix of a queue entry', () => {
+    // User sends "x", then sends "a\nb" (Shift+Enter) → backend merges to "x\na\nb"
+    const messages = [
+      { id: 'user-fff', type: 'user', content: 'x', timestamp: NOW } as ChatMessage,
+      { id: 'user-ggg', type: 'user', content: 'a\nb', timestamp: NOW } as ChatMessage,
+    ];
+    const queue = [makeQueueEntry({ content: 'x\na\nb', messageId: null })];
+    const queuedIds = buildQueuedMessageIds(queue);
+    const queuedContents = buildQueuedContents(queue);
+    const visible = filterMessages(messages, queuedIds, queuedContents);
+
+    // "x" matches as a segment; "a\nb" matches as a \n-boundary suffix
     expect(visible.map((m) => m.id)).toEqual([]);
   });
 });
