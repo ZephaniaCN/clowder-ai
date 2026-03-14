@@ -303,8 +303,10 @@ export function ChatContainer({ threadId }: ChatContainerProps) {
     for (const entry of queueRaw) {
       if (entry.status !== 'queued') continue;
       if (!entry.content) continue;
-      // #20: Merged queue entries concatenate content with "\n" (see InvocationQueue.ts:77).
-      // Split so each individual optimistic bubble can match its own segment.
+      // #20: Always keep the full content string so single messages with newlines
+      // (Shift+Enter) still match. Additionally, split merged queue entries on "\n"
+      // so each individual optimistic bubble can match its own segment.
+      set.add(entry.content);
       for (const segment of entry.content.split('\n')) {
         if (segment) set.add(segment);
       }

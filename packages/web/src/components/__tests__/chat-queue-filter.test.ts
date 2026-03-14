@@ -23,12 +23,13 @@ function buildQueuedMessageIds(queue: QueueEntry[]): Set<string> {
   return ids;
 }
 
-/** Mirrors the queuedContents logic in ChatContainer (split merged content on \n) */
+/** Mirrors the queuedContents logic in ChatContainer (full string + split segments) */
 function buildQueuedContents(queue: QueueEntry[]): Set<string> {
   const set = new Set<string>();
   for (const entry of queue) {
     if (entry.status !== 'queued') continue;
     if (!entry.content) continue;
+    set.add(entry.content);
     for (const segment of entry.content.split('\n')) {
       if (segment) set.add(segment);
     }
@@ -197,5 +198,19 @@ describe('#20: queued message filtering', () => {
 
     // Server-ID messages don't start with "user-", so content match doesn't apply
     expect(visible.map((m) => m.id)).toEqual(['server-id-1']);
+  });
+
+  it('hides optimistic bubble with multiline content (Shift+Enter) via full string match', () => {
+    // Single user message containing newlines (Shift+Enter)
+    const multiline = 'line one\nline two\nline three';
+    const messages = [{ id: 'user-ccc', type: 'user', content: multiline, timestamp: NOW } as ChatMessage];
+    // Queue entry has the same content (not merged — single message)
+    const queue = [makeQueueEntry({ content: multiline, messageId: null })];
+    const queuedIds = buildQueuedMessageIds(queue);
+    const queuedContents = buildQueuedContents(queue);
+    const visible = filterMessages(messages, queuedIds, queuedContents);
+
+    // Full multiline content should match — bubble should be hidden
+    expect(visible.map((m) => m.id)).toEqual([]);
   });
 });
