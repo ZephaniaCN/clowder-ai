@@ -179,9 +179,9 @@ print_config_summary() {
 }
 
 # 默认端口 (not profile-dependent)
-API_PORT=${API_SERVER_PORT:-3003}
-WEB_PORT=${FRONTEND_PORT:-3004}
-REDIS_PORT=${REDIS_PORT:-$(default_redis_port)}
+API_PORT=${API_SERVER_PORT:-3004}
+WEB_PORT=${FRONTEND_PORT:-3003}
+REDIS_PORT=${REDIS_PORT:-6399}
 
 # Profile-aware config resolution
 resolve_config "ANTHROPIC_PROXY_ENABLED"

@@ -253,8 +253,8 @@ cat > "$ENV_FILE" <<ENVEOF
 FRONTEND_PORT=3003
 API_SERVER_PORT=3004
 NEXT_PUBLIC_API_URL=http://localhost:3004
-REDIS_PORT=6379
-REDIS_URL=redis://localhost:6379
+REDIS_PORT=6399
+REDIS_URL=redis://localhost:6399
 
 # ── Model API Keys 模型密钥 ──────────────────────────────────
 # Optional if your CLI subscription already handles auth.
