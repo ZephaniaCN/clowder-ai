@@ -10,12 +10,19 @@ import './helpers/setup-cat-registry.js';
 
 function createMockSocketManager() {
   const messages = [];
+  const userEmits = [];
   return {
     broadcastAgentMessage(msg) {
       messages.push(msg);
     },
+    emitToUser(userId, event, data) {
+      userEmits.push({ userId, event, data });
+    },
     getMessages() {
       return messages;
+    },
+    getUserEmits() {
+      return userEmits;
     },
   };
 }
@@ -74,6 +81,13 @@ describe('POST /api/callbacks/create-thread (F115)', () => {
     const thread = await threadStore.get(body.threadId);
     assert.ok(thread, 'thread should be persisted');
     assert.equal(thread.title, 'Investigate issue #79');
+
+    // F115: Should emit thread_created websocket event to user
+    const emits = socketManager.getUserEmits();
+    assert.equal(emits.length, 1, 'should emit one thread_created event');
+    assert.equal(emits[0].userId, 'user-1');
+    assert.equal(emits[0].event, 'thread_created');
+    assert.equal(emits[0].data.id, body.threadId);
   });
 
   test('creates thread with preferredCats', async () => {

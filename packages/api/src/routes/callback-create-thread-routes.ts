@@ -9,6 +9,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { InvocationRegistry } from '../domains/cats/services/agents/invocation/InvocationRegistry.js';
 import type { IThreadStore } from '../domains/cats/services/stores/ports/ThreadStore.js';
+import type { SocketManager } from '../infrastructure/websocket/index.js';
 import { callbackAuthSchema } from './callback-auth-schema.js';
 import { EXPIRED_CREDENTIALS_ERROR } from './callback-errors.js';
 
@@ -19,9 +20,9 @@ const createThreadCallbackSchema = callbackAuthSchema.extend({
 
 export function registerCallbackCreateThreadRoutes(
   app: FastifyInstance,
-  deps: { registry: InvocationRegistry; threadStore: IThreadStore },
+  deps: { registry: InvocationRegistry; threadStore: IThreadStore; socketManager: SocketManager },
 ): void {
-  const { registry, threadStore } = deps;
+  const { registry, threadStore, socketManager } = deps;
 
   app.post('/api/callbacks/create-thread', async (request, reply) => {
     const parsed = createThreadCallbackSchema.safeParse(request.body);
@@ -51,6 +52,12 @@ export function registerCallbackCreateThreadRoutes(
 
     if (preferredCats && preferredCats.length > 0) {
       await threadStore.updatePreferredCats(thread.id, preferredCats as CatId[]);
+    }
+
+    // Notify frontend sidebar so new thread appears without manual refresh
+    const fullThread = await threadStore.get(thread.id);
+    if (fullThread) {
+      socketManager.emitToUser(record.userId, 'thread_created', fullThread);
     }
 
     reply.status(201);
