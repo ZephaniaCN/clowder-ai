@@ -857,7 +857,9 @@ export const callbackTools = [
     description:
       'Create a new thread. ONLY use when the owner explicitly asks you to create a new thread. ' +
       'Do NOT create threads proactively on your own judgment. ' +
-      'Returns the new threadId so you can immediately post to it with cross_post_message.',
+      'Returns the new threadId. IMPORTANT: After creating, you MUST use cross_post_message ' +
+      'with the returned threadId to send all subsequent messages there — do NOT continue ' +
+      'posting in the current thread about the new topic.',
     inputSchema: createThreadInputSchema,
     handler: handleCreateThread,
   },
