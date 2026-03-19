@@ -3,7 +3,7 @@ name: thread-orchestration
 description: >
   大任务的主动拆解与多 thread 并行编排。
   Use when: 任务涉及 2+ 个独立可交付子任务，需要不同猫参与、不同 thread 并行推进。
-  Not for: 单一任务（直接做）、已有 thread 之间的被动协调（用 cross-thread-sync）、单 session 内 subagent 并行（用 parallel-execution）。
+  Not for: 单一任务（直接做）、已有 thread 之间的被动协调（用 cross-thread-sync）、单 session 内 subagent 并行（CLI 内置能力）。
   Output: 子 thread 创建 + 选猫 + 各 thread 交付 + 主 thread 汇聚报告。
 triggers:
   - "拆任务"
@@ -84,7 +84,7 @@ thread 内的执行遵循已有 skill：
 - 请 review → `request-review` + `cross-cat-handoff`（五件套）
 - 收到反馈 → `receive-review`
 
-**加速手段**：thread 内可用 `parallel-execution` 的 subagent 模式加速实现，但 review 必须由其他猫完成。
+**加速手段**：thread 内可用 CLI 内置的 subagent 并行模式加速实现，但 review 必须由其他猫完成。
 
 ### Step 5: 汇聚 — 确认门禁 + 串行推进
 
@@ -172,7 +172,7 @@ Worktree = 隔离（不冲突）
 | Skill | 层级 | 方向 | 核心区别 |
 |-------|------|------|---------|
 | **thread-orchestration** | 跨 thread | 主动拆解 → 分发 → 汇聚 | 全生命周期编排 |
-| `parallel-execution` | session 内 | subagent 并行 | 不涉及 thread、不涉及其他猫 |
+| CLI subagent 并行 | session 内 | subagent 并行（CLI 内置） | 不涉及 thread、不涉及其他猫 |
 | `cross-thread-sync` | 跨 thread | 被动发现 → 通知 → 协调 | 响应式，不主动建 thread |
 | `cross-cat-handoff` | 猫对猫 | 一次性交接 | 点对点，不涉及多 thread 编排 |
 
