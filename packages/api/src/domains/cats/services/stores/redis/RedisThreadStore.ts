@@ -131,7 +131,7 @@ export class RedisThreadStore implements IThreadStore {
     }
   }
 
-  async create(userId: string, title?: string, projectPath?: string): Promise<Thread> {
+  async create(userId: string, title?: string, projectPath?: string, parentThreadId?: string): Promise<Thread> {
     const now = Date.now();
     const thread: Thread = {
       id: generateThreadId(),
@@ -141,6 +141,7 @@ export class RedisThreadStore implements IThreadStore {
       participants: [],
       lastActiveAt: now,
       createdAt: now,
+      ...(parentThreadId ? { parentThreadId } : {}),
     };
 
     const key = ThreadKeys.detail(thread.id);

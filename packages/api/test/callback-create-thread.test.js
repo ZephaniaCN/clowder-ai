@@ -146,6 +146,31 @@ describe('POST /api/callbacks/create-thread (F128)', () => {
     assert.equal(response.statusCode, 400);
   });
 
+  // F128: parentThreadId tracking for orchestration
+  test('stores parentThreadId when provided', async () => {
+    const app = await createApp();
+    const { invocationId, callbackToken } = registry.create('user-1', 'opus');
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/callbacks/create-thread',
+      payload: {
+        invocationId,
+        callbackToken,
+        title: 'Sub-task thread',
+        parentThreadId: 'main-thread-123',
+      },
+    });
+
+    assert.equal(response.statusCode, 201);
+    const body = JSON.parse(response.body);
+    assert.equal(body.parentThreadId, 'main-thread-123', 'response should echo parentThreadId');
+
+    const thread = await threadStore.get(body.threadId);
+    assert.ok(thread);
+    assert.equal(thread.parentThreadId, 'main-thread-123', 'thread should store parentThreadId');
+  });
+
   // P2 fix: whitespace-only title should be rejected after trim
   test('returns 400 for whitespace-only title', async () => {
     const app = await createApp();

@@ -686,15 +686,22 @@ export const createThreadInputSchema = {
     .max(10)
     .optional()
     .describe('Optional cat IDs to set as preferred cats for the thread (e.g. ["codex","gemini"])'),
+  parentThreadId: z
+    .string()
+    .min(1)
+    .optional()
+    .describe('ID of the parent/main thread for orchestration tracking. Sub-threads should set this so cats know where to report back.'),
 };
 
 export async function handleCreateThread(input: {
   title: string;
   preferredCats?: string[] | undefined;
+  parentThreadId?: string | undefined;
 }): Promise<ToolResult> {
   const result = await callbackPost('/api/callbacks/create-thread', {
     title: input.title,
     ...(input.preferredCats?.length ? { preferredCats: input.preferredCats } : {}),
+    ...(input.parentThreadId ? { parentThreadId: input.parentThreadId } : {}),
   });
 
   // Detect stale_ignored: server returned 200 but thread was NOT created
@@ -857,7 +864,8 @@ export const callbackTools = [
     description:
       'Create a new thread. ONLY use when the owner explicitly asks you to create a new thread. ' +
       'Do NOT create threads proactively on your own judgment. ' +
-      'Returns the new threadId. IMPORTANT: After creating, you MUST use cross_post_message ' +
+      'Returns the new threadId. Set parentThreadId to your current threadId so the new thread ' +
+      'knows where to report back. IMPORTANT: After creating, you MUST use cross_post_message ' +
       'with the returned threadId to send all subsequent messages there — do NOT continue ' +
       'posting in the current thread about the new topic.',
     inputSchema: createThreadInputSchema,
