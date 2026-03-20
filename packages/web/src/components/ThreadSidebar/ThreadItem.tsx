@@ -5,7 +5,7 @@ import { API_URL } from '@/utils/api-client';
 import { CatAvatar } from '../CatAvatar';
 import { ThreadCatStatus } from '../ThreadCatStatus';
 import { ThreadCatSettings } from './ThreadCatSettings';
-import { ThreadHierarchyToggle } from './ThreadHierarchyToggle';
+import { ChildCountBadge, HierarchyArrow } from './ThreadHierarchyToggle';
 import { formatRelativeTime } from './thread-utils';
 
 export interface ThreadItemProps {
@@ -128,9 +128,9 @@ export function ThreadItem({
       )}
       {/* Main layout: [arrow?] [avatar] [content area] */}
       <div className="flex items-start gap-2">
-        {/* Expand/collapse arrow for parent threads */}
+        {/* Expand/collapse arrow only (badge moved to time row) */}
         {childCount != null && childCount > 0 && onToggleExpand && (
-          <ThreadHierarchyToggle childCount={childCount} isExpanded={isExpanded ?? false} onToggle={onToggleExpand} />
+          <HierarchyArrow isExpanded={isExpanded ?? false} onToggle={onToggleExpand} />
         )}
         {/* Cat avatar — first participant or first preferredCat */}
         {(() => {
@@ -277,9 +277,13 @@ export function ThreadItem({
           )}
         </div>
       </div>
-      {/* Bottom row: time + @handle (child) or status */}
+      {/* Bottom row: time + badge (parent) or @handle (child) + status */}
       <div className="flex items-center gap-1">
         <span className="text-[10px] text-gray-400">{formatRelativeTime(lastActiveAt, true)}</span>
+        {/* Parent thread: show "N 子线程" badge next to time */}
+        {childCount != null && childCount > 0 && (
+          <ChildCountBadge count={childCount} isExpanded={isExpanded ?? false} />
+        )}
         {/* Child thread: show @handle next to time */}
         {isChildThread && preferredCats && preferredCats.length > 0 && (
           <span className="text-[10px] text-gray-400">
