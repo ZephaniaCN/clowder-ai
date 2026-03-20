@@ -33,7 +33,7 @@ export function ThreadHierarchyToggle({ childCount, isExpanded, onToggle }: Thre
           isExpanded ? 'bg-purple-100 text-purple-600' : 'bg-gray-100 text-gray-500'
         }`}
       >
-        {childCount}
+        {childCount} 子线程
       </span>
     </button>
   );

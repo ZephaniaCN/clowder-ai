@@ -3,7 +3,6 @@ import { useCatData } from '@/hooks/useCatData';
 import type { ThreadState } from '@/stores/chat-types';
 import { API_URL } from '@/utils/api-client';
 import { CatAvatar } from '../CatAvatar';
-import { PawIcon } from '../icons/PawIcon';
 import { ThreadCatStatus } from '../ThreadCatStatus';
 import { ThreadCatSettings } from './ThreadCatSettings';
 import { ThreadHierarchyToggle } from './ThreadHierarchyToggle';
@@ -123,26 +122,29 @@ export function ThreadItem({
       {/* Child thread tree-line connector: ├── (mid) or └── (last) */}
       {isChildThread && (
         <>
-          {/* Vertical line — full height for mid-children, half height for last */}
           <div className={`absolute left-7 top-0 w-px bg-gray-200 ${isLastChild ? 'h-5' : 'bottom-0'}`} />
-          {/* Horizontal branch */}
           <div className="absolute left-7 top-5 w-3 h-px bg-gray-200" />
         </>
       )}
-      {/* Child thread cat avatar + @handle */}
-      {isChildThread && preferredCats && preferredCats.length > 0 && (
-        <div className="flex items-center gap-1 mb-1">
-          <CatAvatar catId={preferredCats[0]} size={18} />
-          <span className="text-[10px] text-gray-400">
-            @{getCatById(preferredCats[0])?.id ?? preferredCats[0]}
-          </span>
-        </div>
-      )}
-      {/* Title row */}
-      <div className="flex items-start justify-between gap-1 mb-1">
+      {/* Main layout: [arrow?] [avatar] [content area] */}
+      <div className="flex items-start gap-2">
+        {/* Expand/collapse arrow for parent threads */}
         {childCount != null && childCount > 0 && onToggleExpand && (
           <ThreadHierarchyToggle childCount={childCount} isExpanded={isExpanded ?? false} onToggle={onToggleExpand} />
         )}
+        {/* Cat avatar — first participant or first preferredCat */}
+        {(() => {
+          const avatarCatId = participants[0] ?? preferredCats?.[0];
+          return avatarCatId ? (
+            <div className="flex-shrink-0 mt-0.5">
+              <CatAvatar catId={avatarCatId} size={28} />
+            </div>
+          ) : null;
+        })()}
+        {/* Content area: title + meta row */}
+        <div className="flex-1 min-w-0">
+      {/* Title row */}
+      <div className="flex items-start justify-between gap-1 mb-1">
         {isEditing ? (
           <input
             ref={inputRef}
@@ -275,42 +277,25 @@ export function ThreadItem({
           )}
         </div>
       </div>
-      {/* Bottom row: avatars + status + compact time */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1">
-          {participants.length > 0 ? (
-            participants.map((catId) => <CatAvatar key={catId} catId={catId} size={16} />)
-          ) : id !== 'default' ? (
-            <>
-              <PawIcon className="w-3 h-3 text-gray-300" />
-              <span className="text-[10px] text-gray-300">还没有猫猫加入</span>
-            </>
-          ) : null}
-          {preferredCats && preferredCats.length > 0 && (
-            <div
-              className="flex items-center gap-0.5 ml-1"
-              title={`默认: ${preferredCats.map((id) => getCatById(id)?.displayName ?? id).join(', ')}`}
-            >
-              <span className="text-[9px] text-gray-400">🎯</span>
-              {preferredCats.map((catId) => (
-                <span
-                  key={catId}
-                  className="inline-block w-1.5 h-1.5 rounded-full"
-                  style={{ backgroundColor: getCatById(catId)?.color.primary ?? '#9CA3AF' }}
-                />
-              ))}
-            </div>
-          )}
-          {threadState && (
-            <ThreadCatStatus
-              threadState={threadState}
-              unreadCount={threadState.unreadCount}
-              hasUserMention={threadState.hasUserMention}
-            />
-          )}
-        </div>
-        <span className="text-[10px] text-gray-400 flex-shrink-0">{formatRelativeTime(lastActiveAt, true)}</span>
+      {/* Bottom row: time + @handle (child) or status */}
+      <div className="flex items-center gap-1">
+        <span className="text-[10px] text-gray-400">{formatRelativeTime(lastActiveAt, true)}</span>
+        {/* Child thread: show @handle next to time */}
+        {isChildThread && preferredCats && preferredCats.length > 0 && (
+          <span className="text-[10px] text-gray-400">
+            · @{getCatById(preferredCats[0])?.id ?? preferredCats[0]}
+          </span>
+        )}
+        {threadState && (
+          <ThreadCatStatus
+            threadState={threadState}
+            unreadCount={threadState.unreadCount}
+            hasUserMention={threadState.hasUserMention}
+          />
+        )}
       </div>
+      </div>{/* close content area */}
+      </div>{/* close main layout */}
     </div>
   );
 }
