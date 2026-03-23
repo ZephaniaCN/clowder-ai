@@ -831,7 +831,8 @@ configure_dare_auth() {
         _INSTALLER_API_KEY="$key" node scripts/install-auth-config.mjs client-auth set \
             --project-dir "$PROJECT_DIR" \
             --client dare \
-            --mode api_key
+            --mode api_key \
+            --model z-ai/glm-4.7
         ok "Dare (狸花猫): API key configured"
     else
         warn "Dare (狸花猫): no key — set OPENROUTER_API_KEY in .env to enable later"
