@@ -658,7 +658,7 @@ if [[ -d "$SKILLS_SOURCE" ]]; then
     done; ok "Skills linked"
 else fail "cat-cafe-skills/ not found"; exit 1; fi
 
-# F132: DARE CLI (狸花猫) — clone + venv setup
+# F135: DARE CLI (狸花猫) — clone + venv setup
 # Pin to a known-good commit for reproducible installs (bump via PR when upgrading DARE).
 DARE_CLI_REF="${DARE_CLI_REF:-6654255f003b2be58c1c75160607b7d7bf0eb957}"
 DARE_VENDOR_DIR="$PROJECT_DIR/vendor/dare-cli"
@@ -823,7 +823,7 @@ configure_agent_auth() {
 }
 
 configure_dare_auth() {
-    # F132: DARE uses API key only (no OAuth / no CLI binary)
+    # F135: DARE uses API key only (no OAuth / no CLI binary)
     [[ -f "$DARE_VENDOR_DIR/client/__main__.py" ]] || return 0
     local key=""
     tty_read_secret "    Dare (狸花猫) — OpenRouter API Key (Enter = skip): " key

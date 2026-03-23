@@ -1,12 +1,12 @@
 ---
-feature_ids: [F132]
+feature_ids: [F135]
 related_features: [F050, F113]
 topics: [dare, installation, onboarding, external-agent]
 doc_kind: spec
 created: 2026-03-23
 ---
 
-# F132: 狸花猫开箱即用（DARE Out-of-the-Box）
+# F135: 狸花猫开箱即用（DARE Out-of-the-Box）
 
 > **Status**: spec | **Owner**: Ragdoll | **Priority**: P1
 

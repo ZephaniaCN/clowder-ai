@@ -63,7 +63,7 @@ const ADAPTER_ENDPOINT_ENV: Record<string, string> = {
 };
 
 /**
- * F132: Resolve vendor/dare-cli path from project root (not cwd).
+ * F135: Resolve vendor/dare-cli path from project root (not cwd).
  * Uses import.meta.url to derive the project root from this module's location.
  * packages/api/src/domains/cats/services/agents/providers/ → 8 levels up = project root
  */
@@ -73,7 +73,7 @@ export function resolveVendorDarePath(): string {
 }
 
 /**
- * F132: Resolve venv python for a given DARE path.
+ * F135: Resolve venv python for a given DARE path.
  * macOS/Linux: .venv/bin/python; Windows: .venv/Scripts/python.exe (future KD-5)
  */
 export function resolveVenvPython(darePath: string): string {
@@ -146,7 +146,7 @@ export class DareAgentService implements AgentService {
     // P1-1: cwd must ALWAYS be darePath (where `python -m client` can find the module).
     // Thread's workingDirectory goes to --workspace instead.
     const cwd = this.darePath;
-    // F132: Prefer DARE repo's own venv python (has required deps like openai)
+    // F135: Prefer DARE repo's own venv python (has required deps like openai)
     const pythonCmd = cwd ? resolveVenvPython(cwd) : 'python';
     // P1-3: Pass API key via child env, not CLI args (avoids ps/audit leakage)
     const childEnv = this.buildEnv(options?.callbackEnv);

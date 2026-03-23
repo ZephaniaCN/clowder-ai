@@ -18,7 +18,7 @@ import {
   resolveVendorDarePath,
 } from '../dist/domains/cats/services/agents/providers/DareAgentService.js';
 
-// F132: prefer env DARE_PATH > vendor/dare-cli (if DARE exists there) > legacy /tmp path
+// F135: prefer env DARE_PATH > vendor/dare-cli (if DARE exists there) > legacy /tmp path
 const LEGACY_DARE_PATH = '/tmp/cat-cafe-reviews/Deterministic-Agent-Runtime-Engine';
 const vendorPath = resolveVendorDarePath();
 const vendorHasDare = existsSync(`${vendorPath}/client/__main__.py`);

@@ -805,10 +805,10 @@
       "file": "F131-workspace-navigator.md"
     },
     {
-      "id": "F132",
+      "id": "F135",
       "name": "狸花猫开箱即用（DARE Out-of-the-Box）",
       "status": "spec | **Owner**: Ragdoll | **Priority**: P1",
-      "file": "F132-dare-ootb.md"
+      "file": "F135-dare-ootb.md"
     }
   ],
   "generated_at": "2026-03-23T13:11:20.460Z"

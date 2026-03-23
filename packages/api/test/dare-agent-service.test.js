@@ -408,8 +408,8 @@ describe('DareAgentService', () => {
     assert.ok(!args.includes('--resume'), `did not expect --resume in args: ${args}`);
   });
 
-  // F132: venv python — uses .venv/bin/python when available
-  test('uses venv python as command when .venv/bin/python exists (F132)', async () => {
+  // F135: venv python — uses .venv/bin/python when available
+  test('uses venv python as command when .venv/bin/python exists (F135)', async () => {
     const tmpDare = join(tmpdir(), `dare-test-venv-${Date.now()}`);
     mkdirSync(join(tmpDare, '.venv', 'bin'), { recursive: true });
     mkdirSync(join(tmpDare, 'client'), { recursive: true });
@@ -432,7 +432,7 @@ describe('DareAgentService', () => {
     assert.strictEqual(command, join(tmpDare, '.venv', 'bin', 'python'));
   });
 
-  test('falls back to bare python when no .venv exists (F132)', async () => {
+  test('falls back to bare python when no .venv exists (F135)', async () => {
     const proc = createMockProcess();
     const spawnFn = mock.fn(() => proc);
     const service = new DareAgentService({
@@ -450,8 +450,8 @@ describe('DareAgentService', () => {
   });
 });
 
-// F132: resolveVendorDarePath — project root resolution
-describe('resolveVendorDarePath (F132)', () => {
+// F135: resolveVendorDarePath — project root resolution
+describe('resolveVendorDarePath (F135)', () => {
   test('returns absolute path ending with vendor/dare-cli', () => {
     const result = resolveVendorDarePath();
     assert.ok(result.endsWith(join('vendor', 'dare-cli')), `expected vendor/dare-cli suffix, got: ${result}`);
@@ -481,8 +481,8 @@ describe('resolveVendorDarePath (F132)', () => {
   });
 });
 
-// F132: resolveVenvPython helper
-describe('resolveVenvPython (F132)', () => {
+// F135: resolveVenvPython helper
+describe('resolveVenvPython (F135)', () => {
   test('returns .venv/bin/python when it exists', () => {
     const tmpDare = join(tmpdir(), `dare-test-helper-${Date.now()}`);
     mkdirSync(join(tmpDare, '.venv', 'bin'), { recursive: true });
