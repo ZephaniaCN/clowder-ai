@@ -207,14 +207,17 @@ export function IdentitySection({
   );
 }
 
-/** Extract unique provider prefixes from model strings like "openai/gpt-5.4" → "openai". */
-function extractProviderPrefixes(models: string[]): string[] {
-  const prefixes = new Set<string>();
+/** Well-known OpenCode provider names (always shown as suggestions). */
+const KNOWN_OC_PROVIDERS = ['anthropic', 'openai', 'openrouter', 'google', 'azure', 'deepseek'];
+
+/** Merge well-known providers with any prefixes extracted from model strings like "openai/gpt-5.4". */
+function buildProviderSuggestions(models: string[]): string[] {
+  const seen = new Set<string>(KNOWN_OC_PROVIDERS);
   for (const m of models) {
     const idx = m.indexOf('/');
-    if (idx > 0) prefixes.add(m.slice(0, idx));
+    if (idx > 0) seen.add(m.slice(0, idx));
   }
-  return [...prefixes].sort();
+  return [...seen].sort();
 }
 
 function ComboField({
@@ -307,7 +310,7 @@ export function AccountSection({
   const selectedProfile = availableProfiles.find((p) => p.id === form.accountRef);
   const callHint = buildCallHint(form.client, selectedProfile, form.defaultModel);
   const providerSuggestions = useMemo(
-    () => extractProviderPrefixes(selectedProfile?.models ?? []),
+    () => buildProviderSuggestions(selectedProfile?.models ?? []),
     [selectedProfile?.models],
   );
 
