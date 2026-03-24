@@ -342,7 +342,7 @@ export function AccountSection({
         ) : (
           <>
             <SelectField
-              label="Provider"
+              label="认证信息"
               value={form.accountRef}
               options={[
                 { value: '', label: loadingProfiles ? '加载中…' : '请选择认证方式' },
