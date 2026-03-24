@@ -293,7 +293,7 @@ describe('HubCatEditor', () => {
     expect(postCall?.[1]?.method).toBe('POST');
     const payload = JSON.parse(String(postCall?.[1]?.body));
     expect(payload.client).toBe('openai');
-    expect(payload.catId).toBe('火花猫');
+    expect(payload.catId).toMatch(/^cat-[a-z0-9]+$/);
     expect(payload.accountRef).toBe('codex-sponsor');
     expect(payload.defaultModel).toBe('gpt-5.4-mini');
     expect(onSaved).toHaveBeenCalledTimes(1);

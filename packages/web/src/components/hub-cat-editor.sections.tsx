@@ -23,13 +23,24 @@ function safeAvatarSrc(value: string): string | null {
   return null;
 }
 
-function autoSlug(name: string): string {
-  return name
+function autoSlug(name: string, currentId?: string): string {
+  const slug = name
     .trim()
     .toLowerCase()
     .replace(/[\s_]+/g, '-')
-    .replace(/[^a-z0-9\u4e00-\u9fff-]/g, '')
+    .replace(/[^a-z0-9-]/g, '')
+    .replace(/^[^a-z]+/, '')
+    .replace(/-+$/, '')
+    .replace(/-{2,}/g, '-')
     .slice(0, 40);
+
+  if (/^[a-z]/.test(slug) && slug.length >= 2) return slug;
+
+  // Non-ASCII or too-short name: keep existing random ID if present
+  if (currentId && /^cat-[a-z0-9]+$/.test(currentId)) return currentId;
+
+  const rand = Math.random().toString(36).substring(2, 10);
+  return `cat-${rand}`;
 }
 
 function currentAliasTags(form: HubCatEditorFormState): string[] {
@@ -64,7 +75,7 @@ export function IdentitySection({
             ariaLabel="Name"
             value={form.name}
             onChange={(value) => {
-              onChange({ name: value, displayName: value, catId: autoSlug(value) });
+              onChange({ name: value, displayName: value, catId: autoSlug(value, form.catId) });
             }}
             required
             placeholder="成员显示名称，如 我的助手"
