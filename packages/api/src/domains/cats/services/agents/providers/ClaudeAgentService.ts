@@ -18,6 +18,7 @@
 import { existsSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 import { type CatId, createCatId } from '@cat-cafe/shared';
+import { createModuleLogger } from '../../../../../infrastructure/logger.js';
 import { getCatEffort } from '../../../../../config/cat-config-loader.js';
 import { getCatModel } from '../../../../../config/cat-models.js';
 import { formatCliExitError } from '../../../../../utils/cli-format.js';
@@ -36,6 +37,8 @@ const ANTHROPIC_PROFILE_MODE_KEY = 'CAT_CAFE_ANTHROPIC_PROFILE_MODE';
 const ANTHROPIC_PROFILE_API_KEY = 'CAT_CAFE_ANTHROPIC_API_KEY';
 const ANTHROPIC_PROFILE_BASE_URL = 'CAT_CAFE_ANTHROPIC_BASE_URL';
 const ANTHROPIC_MODEL_OVERRIDE_KEY = 'CAT_CAFE_ANTHROPIC_MODEL_OVERRIDE';
+
+const claudeLog = createModuleLogger('claude-agent');
 
 
 function isInvalidThinkingSignatureMessage(message: string | undefined): boolean {
@@ -74,7 +77,12 @@ function buildClaudeEnvOverrides(callbackEnv?: Record<string, string>): Record<s
   if (mode === 'api_key') {
     const apiKey = callbackEnv?.[ANTHROPIC_PROFILE_API_KEY]?.trim();
     const baseUrl = callbackEnv?.[ANTHROPIC_PROFILE_BASE_URL]?.trim();
-    if (apiKey) env.ANTHROPIC_API_KEY = apiKey;
+    if (apiKey) {
+      env.ANTHROPIC_API_KEY = apiKey;
+      // BigModel/MaaS docs use AUTH_TOKEN instead of API_KEY — set both for compatibility.
+      // Some Claude CLI versions may use different auth headers depending on which var is set.
+      env.ANTHROPIC_AUTH_TOKEN = apiKey;
+    }
     if (baseUrl) {
       // Claude CLI internally appends /v1 to the base URL.
       // If the user configured it with /v1 already, strip it to prevent
@@ -90,7 +98,11 @@ function buildClaudeEnvOverrides(callbackEnv?: Record<string, string>): Record<s
     // Disable nonessential traffic (model validation against /v1/models) which fails
     // on third-party APIs that don't list claude-* model names (e.g. BigModel/MaaS).
     // See: https://docs.bigmodel.cn/cn/guide/develop/claude
+    // BigModel/MaaS recommended env vars to suppress model validation and experimental features
+    // that may interfere with third-party API compatibility.
     env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = '1';
+    env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS = '1';
+    env.ENABLE_TOOL_SEARCH = '0';
     const modelOverride = callbackEnv?.[ANTHROPIC_MODEL_OVERRIDE_KEY]?.trim();
     const effectiveModel = modelOverride || undefined;
     if (effectiveModel) {
@@ -249,6 +261,17 @@ export class ClaudeAgentService implements AgentService {
 
       let sawResultError = false;
       const envOverrides = buildClaudeEnvOverrides(options?.callbackEnv);
+
+      // Debug: log CLI args + processed env vars (secrets redacted)
+      {
+        const safeEnv = Object.fromEntries(
+          Object.entries(envOverrides).filter(
+            ([k, v]) => v !== null && !k.includes('API_KEY') && !k.includes('AUTH_TOKEN') && !k.includes('SECRET')
+              && !k.includes('CALLBACK_TOKEN'),
+          ),
+        );
+        claudeLog.info({ catId: this.catId, cliArgs: args, envOverrides: safeEnv }, 'Claude CLI spawn params');
+      }
 
       const cliOpts = {
         command: claudeCommand,
