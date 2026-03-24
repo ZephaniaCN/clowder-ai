@@ -1283,6 +1283,12 @@ async function main(): Promise<void> {
           const result = await messageStore.append(input);
           return { id: result.id };
         },
+        async getById(id: string) {
+          const msg = messageStore.getById?.(id);
+          if (!msg) return null;
+          const resolved = msg instanceof Promise ? await msg : msg;
+          return resolved ? { source: resolved.source } : null;
+        },
       },
       threadStore,
       invokeTrigger,
