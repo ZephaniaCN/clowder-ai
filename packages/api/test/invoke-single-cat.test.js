@@ -3163,6 +3163,15 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
     const savedGlobalRoot = process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT;
     process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT = root;
 
+    // Strip catalog-assigned providerProfileId/accountRef so the test's
+    // bootstrap binding is used instead of the builtin OAuth profile.
+    const originalOpusConfig = catRegistry.tryGet('opus')?.config;
+    if (originalOpusConfig) {
+      const { providerProfileId: _pp, accountRef: _ar, ...cleanConfig } = originalOpusConfig;
+      catRegistry.entries.delete('opus');
+      catRegistry.register('opus', cleanConfig);
+    }
+
     await createProviderProfile(root, {
       provider: 'anthropic',
       name: 'sponsor-gateway',
@@ -3272,6 +3281,10 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
       else process.env.ANTHROPIC_PROXY_ENABLED = previousProxyEnabled;
       if (savedGlobalRoot === undefined) delete process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT;
       else process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT = savedGlobalRoot;
+      if (originalOpusConfig) {
+        catRegistry.entries.delete('opus');
+        catRegistry.register('opus', originalOpusConfig);
+      }
       await rm(root, { recursive: true, force: true });
     }
   });
@@ -3294,6 +3307,15 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
 
     const savedGlobalRoot = process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT;
     process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT = root;
+
+    // Strip catalog-assigned providerProfileId/accountRef so the test's
+    // bootstrap binding is used instead of the builtin OAuth profile.
+    const originalOpusConfig = catRegistry.tryGet('opus')?.config;
+    if (originalOpusConfig) {
+      const { providerProfileId: _pp, accountRef: _ar, ...cleanConfig } = originalOpusConfig;
+      catRegistry.entries.delete('opus');
+      catRegistry.register('opus', cleanConfig);
+    }
 
     await createProviderProfile(root, {
       provider: 'anthropic',
@@ -3404,6 +3426,10 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
       else process.env.ANTHROPIC_PROXY_ENABLED = previousProxyEnabled;
       if (savedGlobalRoot === undefined) delete process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT;
       else process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT = savedGlobalRoot;
+      if (originalOpusConfig) {
+        catRegistry.entries.delete('opus');
+        catRegistry.register('opus', originalOpusConfig);
+      }
       _clearTestStrategyOverrides();
       await rm(root, { recursive: true, force: true });
     }
@@ -3427,6 +3453,15 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
 
     const savedGlobalRoot = process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT;
     process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT = root;
+
+    // Strip catalog-assigned providerProfileId/accountRef so the test's
+    // bootstrap binding is used instead of the builtin OAuth profile.
+    const originalOpusConfig = catRegistry.tryGet('opus')?.config;
+    if (originalOpusConfig) {
+      const { providerProfileId: _pp, accountRef: _ar, ...cleanConfig } = originalOpusConfig;
+      catRegistry.entries.delete('opus');
+      catRegistry.register('opus', cleanConfig);
+    }
 
     await createProviderProfile(root, {
       provider: 'anthropic',
@@ -3523,6 +3558,10 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
       else process.env.ANTHROPIC_PROXY_ENABLED = previousProxyEnabled;
       if (savedGlobalRoot === undefined) delete process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT;
       else process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT = savedGlobalRoot;
+      if (originalOpusConfig) {
+        catRegistry.entries.delete('opus');
+        catRegistry.register('opus', originalOpusConfig);
+      }
       _clearTestStrategyOverrides();
       await rm(root, { recursive: true, force: true });
     }
