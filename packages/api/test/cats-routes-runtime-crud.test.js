@@ -535,7 +535,7 @@ describe('cats routes runtime CRUD', { concurrency: false }, () => {
     assert.equal(createRes.statusCode, 201, 'cross-protocol api_key binding should be allowed');
   });
 
-  it('POST /api/cats rejects opencode model without providerId/ prefix', async () => {
+  it('POST /api/cats rejects opencode bare model without ocProviderName', async () => {
     const projectRoot = createProjectRoot();
     process.env.CAT_TEMPLATE_PATH = join(projectRoot, 'cat-template.json');
 
@@ -555,7 +555,8 @@ describe('cats routes runtime CRUD', { concurrency: false }, () => {
     const app = Fastify();
     await app.register(catsRoutes);
 
-    const createRes = await app.inject({
+    // bare model WITHOUT ocProviderName → 400
+    const rejectRes = await app.inject({
       method: 'POST',
       url: '/api/cats',
       headers: {
@@ -576,9 +577,34 @@ describe('cats routes runtime CRUD', { concurrency: false }, () => {
       }),
     });
 
-    assert.equal(createRes.statusCode, 400);
-    const createBody = JSON.parse(createRes.body);
-    assert.match(createBody.error, /providerId\/modelId/i);
+    assert.equal(rejectRes.statusCode, 400, 'bare model without ocProviderName should be rejected');
+    const rejectBody = JSON.parse(rejectRes.body);
+    assert.match(rejectBody.error, /provider/i);
+
+    // bare model WITH ocProviderName → 201
+    const acceptRes = await app.inject({
+      method: 'POST',
+      url: '/api/cats',
+      headers: {
+        'content-type': 'application/json',
+        'x-cat-cafe-user': 'codex',
+      },
+      body: JSON.stringify({
+        catId: 'runtime-opencode-bare-with-provider',
+        name: '运行时金渐层2',
+        displayName: '运行时金渐层2',
+        avatar: '/avatars/opencode.png',
+        color: { primary: '#0f172a', secondary: '#e2e8f0' },
+        mentionPatterns: ['@runtime-opencode-bare-with-provider'],
+        roleDescription: '审查',
+        client: 'opencode',
+        providerProfileId: openaiProfile.id,
+        defaultModel: 'gpt-5.4',
+        ocProviderName: 'openai',
+      }),
+    });
+
+    assert.equal(acceptRes.statusCode, 201, 'bare model with ocProviderName should succeed');
   });
 
   it('POST /api/cats rejects catId values that are not lowercase-safe identifiers', async () => {

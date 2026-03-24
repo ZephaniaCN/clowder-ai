@@ -53,14 +53,21 @@ export function validateModelFormatForProvider(
   provider: CatProvider,
   defaultModel?: string | null,
   profileKind?: ProviderProfileKind,
+  ocProviderName?: string | null,
 ): string | null {
   if (provider !== 'opencode') return null;
-  // api_key members use ocProviderName for routing — bare model names are valid
-  if (profileKind === 'api_key') return null;
   const trimmedModel = defaultModel?.trim();
   if (!trimmedModel) return null;
   const slashIndex = trimmedModel.indexOf('/');
-  if (slashIndex > 0 && slashIndex < trimmedModel.length - 1) return null;
+  const isBareModel = !(slashIndex > 0 && slashIndex < trimmedModel.length - 1);
+  if (profileKind === 'api_key') {
+    // api_key + bare model requires ocProviderName for runtime assembly
+    if (isBareModel && !ocProviderName?.trim()) {
+      return 'client "opencode" with API key auth requires an OpenCode Provider name when using a bare model (no provider/ prefix)';
+    }
+    return null;
+  }
+  if (!isBareModel) return null;
   return 'client "opencode" recommends model format "providerId/modelId" (e.g. openai/gpt-5.4)';
 }
 

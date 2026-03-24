@@ -219,6 +219,7 @@ async function validateAccountBindingOrThrow(
   client: CatProvider,
   accountRef?: string | null,
   defaultModel?: string | null,
+  ocProviderName?: string | null,
 ): Promise<void> {
   const trimmedAccountRef = accountRef?.trim();
   if (client === 'antigravity' && trimmedAccountRef) {
@@ -236,7 +237,7 @@ async function validateAccountBindingOrThrow(
   if (compatibilityError) {
     throw new Error(compatibilityError);
   }
-  const modelFormatError = validateModelFormatForProvider(client, defaultModel, runtimeProfile.kind);
+  const modelFormatError = validateModelFormatForProvider(client, defaultModel, runtimeProfile.kind, ocProviderName);
   if (modelFormatError) {
     throw new Error(modelFormatError);
   }
@@ -379,7 +380,14 @@ export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opt
 
     const accountRef = resolveAccountRef(body);
     try {
-      await validateAccountBindingOrThrow(projectRoot, body.client, accountRef, body.defaultModel);
+      const ocProviderNameForValidation = 'ocProviderName' in body ? body.ocProviderName : undefined;
+      await validateAccountBindingOrThrow(
+        projectRoot,
+        body.client,
+        accountRef,
+        body.defaultModel,
+        ocProviderNameForValidation,
+      );
       const resolvedAvatar = body.avatar ?? '/avatars/default.png';
       if (body.client === 'antigravity') {
         createRuntimeCat(projectRoot, {
@@ -499,7 +507,15 @@ export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opt
 
     if (providerConfigTouched) {
       try {
-        await validateAccountBindingOrThrow(projectRoot, effectiveClient, effectiveAccountRef, effectiveDefaultModel);
+        const effectiveOcProviderName =
+          body.ocProviderName !== undefined ? body.ocProviderName : currentCat.ocProviderName;
+        await validateAccountBindingOrThrow(
+          projectRoot,
+          effectiveClient,
+          effectiveAccountRef,
+          effectiveDefaultModel,
+          effectiveOcProviderName,
+        );
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         reply.status(400);
