@@ -612,12 +612,14 @@ async function migrateProjectLocalToGlobal(projectRoot: string, globalRoot: stri
   if (existsSync(globalMetaPath)) {
     const globalResult = await readRawAtStorageRoot(globalRoot);
     const existingIds = new Set(globalResult.meta.providers.map((p) => p.id));
+    const renamedIds = new Map<string, string>();
     for (const profile of localResult.meta.providers) {
       // Skip builtins — normalization already guarantees their presence in the global store.
       if (profile.kind === 'builtin' || profile.builtin) continue;
       let mergedId = profile.id;
       if (existingIds.has(mergedId)) {
         mergedId = `${mergedId}-migrated-${Date.now()}`;
+        renamedIds.set(profile.id, mergedId);
       }
       const mergedProfile = { ...profile, id: mergedId };
       globalResult.meta.providers.push(mergedProfile);
@@ -628,6 +630,7 @@ async function migrateProjectLocalToGlobal(projectRoot: string, globalRoot: stri
       }
     }
     await writeRaw(globalMetaPath, globalSecretsPath, globalResult.meta, globalResult.secrets);
+    rewriteCatalogProfileRefs(projectRoot, renamedIds);
   } else {
     await writeRaw(globalMetaPath, globalSecretsPath, localResult.meta, localResult.secrets);
   }
@@ -665,12 +668,14 @@ function migrateProjectLocalToGlobalSync(projectRoot: string, globalRoot: string
     const globalMeta = normalizeMeta(rawGlobalMeta).value;
     const existingIds = new Set(globalMeta.providers.map((p) => p.id));
     const localProviders: ProviderProfileMeta[] = [];
+    const renamedIds = new Map<string, string>();
     for (const p of normalizedLocal.value.providers) {
       // Skip builtins — normalization already guarantees their presence in the global store.
       if (p.kind === 'builtin' || p.builtin) continue;
       let mergedId = p.id;
       if (existingIds.has(mergedId)) {
         mergedId = `${mergedId}-migrated-${Date.now()}`;
+        renamedIds.set(p.id, mergedId);
       }
       localProviders.push({ ...p, id: mergedId });
       existingIds.add(mergedId);
@@ -696,6 +701,7 @@ function migrateProjectLocalToGlobalSync(projectRoot: string, globalRoot: string
         writeFileSync(globalSecretsPath, `${JSON.stringify(globalSecrets, null, 2)}\n`);
         chmodSync(globalSecretsPath, 0o600);
       }
+      rewriteCatalogProfileRefs(projectRoot, renamedIds);
     }
   } else {
     copyFileSync(localMetaPath, globalMetaPath);
@@ -838,6 +844,30 @@ function readRuntimeCatalog(projectRoot: string): any | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * After migration renames profile IDs (collision avoidance), update cat catalog
+ * entries that still reference the original ID so they point to the new ID.
+ */
+function rewriteCatalogProfileRefs(projectRoot: string, idMap: Map<string, string>): void {
+  if (idMap.size === 0) return;
+  const catalog = readRuntimeCatalog(projectRoot);
+  if (!catalog?.breeds || !Array.isArray(catalog.breeds)) return;
+  let dirty = false;
+  for (const breed of catalog.breeds) {
+    for (const variant of breed.variants ?? []) {
+      const ref = typeof variant.accountRef === 'string' ? variant.accountRef : variant.providerProfileId;
+      const newId = ref ? idMap.get(ref) : undefined;
+      if (!newId) continue;
+      if (typeof variant.accountRef === 'string') variant.accountRef = newId;
+      if (variant.providerProfileId != null) variant.providerProfileId = newId;
+      dirty = true;
+    }
+  }
+  if (!dirty) return;
+  const filePath = resolve(projectRoot, '.cat-cafe', 'cat-catalog.json');
+  writeFileSync(filePath, `${JSON.stringify(catalog, null, 2)}\n`);
 }
 
 function collectRuntimeCatsBoundToProfile(projectRoot: string, profileId: string): string[] {

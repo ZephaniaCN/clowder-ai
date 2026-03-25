@@ -635,6 +635,21 @@ describe('provider profile store', () => {
       );
       assert.equal(globalSecrets.profiles['acct-beta']?.apiKey, 'sk-beta', 'project B unique secret present');
 
+      // 4b. Cat catalog refs in project B are rewritten to point to the new migrated ID
+      const catalogPathB = join(localDirB, 'cat-catalog.json');
+      if (existsSync(catalogPathB)) {
+        const catalog = JSON.parse(await readFile(catalogPathB, 'utf-8'));
+        for (const breed of catalog.breeds ?? []) {
+          for (const variant of breed.variants ?? []) {
+            const ref = variant.accountRef ?? variant.providerProfileId;
+            assert.ok(
+              !ref || ref !== 'acct-alpha' || ref === migratedAlpha.id,
+              'cat catalog ref should point to migrated ID, not original',
+            );
+          }
+        }
+      }
+
       // 5. Project B local file was renamed to .migrated
       const localMetaB = join(localDirB, 'provider-profiles.json');
       assert.equal(existsSync(localMetaB), false, 'project B local meta should be gone');
@@ -708,6 +723,107 @@ describe('provider profile store', () => {
       assert.ok(charlieProfile, 'project C profile should be merged into global after legacy v1 normalization');
       assert.ok(charlieProfile.hasApiKey, 'project C api key must survive legacy v1 secrets normalization');
       await rm(projectC, { recursive: true, force: true });
+    } finally {
+      if (previousGlobalRoot === undefined) delete process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT;
+      else process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT = previousGlobalRoot;
+      await Promise.all([
+        rm(projectA, { recursive: true, force: true }),
+        rm(projectB, { recursive: true, force: true }),
+        rm(globalRoot, { recursive: true, force: true }),
+      ]);
+    }
+  });
+
+  it('rewrites cat catalog accountRef when profile ID is renamed during migration', async () => {
+    const projectA = await makeTmpDir('rewrite-projA');
+    const projectB = await makeTmpDir('rewrite-projB');
+    const globalRoot = await makeTmpDir('rewrite-global');
+    const previousGlobalRoot = process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT;
+    process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT = globalRoot;
+    try {
+      // --- Project A: seed with acct-shared ---
+      const localDirA = join(projectA, '.cat-cafe');
+      await mkdir(localDirA, { recursive: true });
+      await writeFile(
+        join(localDirA, 'provider-profiles.json'),
+        JSON.stringify({
+          version: 3,
+          activeProfileId: null,
+          providers: [
+            {
+              id: 'acct-shared',
+              displayName: 'Shared A',
+              kind: 'api_key',
+              authType: 'api_key',
+              builtin: false,
+              createdAt: '2026-01-01T00:00:00Z',
+              updatedAt: '2026-01-01T00:00:00Z',
+            },
+          ],
+          bootstrapBindings: {},
+        }),
+      );
+      await writeFile(
+        join(localDirA, 'provider-profiles.secrets.local.json'),
+        JSON.stringify({ version: 3, profiles: { 'acct-shared': { apiKey: 'sk-a' } } }),
+      );
+      await readProviderProfiles(projectA);
+
+      // --- Project B: seed with same acct-shared + cat catalog referencing it ---
+      const localDirB = join(projectB, '.cat-cafe');
+      await mkdir(localDirB, { recursive: true });
+      await writeFile(
+        join(localDirB, 'provider-profiles.json'),
+        JSON.stringify({
+          version: 3,
+          activeProfileId: null,
+          providers: [
+            {
+              id: 'acct-shared',
+              displayName: 'Shared B',
+              kind: 'api_key',
+              authType: 'api_key',
+              builtin: false,
+              createdAt: '2026-02-01T00:00:00Z',
+              updatedAt: '2026-02-01T00:00:00Z',
+            },
+          ],
+          bootstrapBindings: {},
+        }),
+      );
+      await writeFile(
+        join(localDirB, 'provider-profiles.secrets.local.json'),
+        JSON.stringify({ version: 3, profiles: { 'acct-shared': { apiKey: 'sk-b' } } }),
+      );
+      // Cat catalog in project B references acct-shared
+      await writeFile(
+        join(localDirB, 'cat-catalog.json'),
+        JSON.stringify({
+          breeds: [
+            {
+              catId: 'test-cat',
+              defaultVariantId: 'v1',
+              variants: [{ id: 'v1', provider: 'anthropic', accountRef: 'acct-shared', providerProfileId: 'acct-shared' }],
+            },
+          ],
+        }),
+      );
+
+      // Trigger migration for project B (merge into existing global → collision)
+      await readProviderProfiles(projectB);
+
+      // Verify cat catalog was rewritten
+      const catalogPath = join(localDirB, 'cat-catalog.json');
+      const catalog = JSON.parse(await readFile(catalogPath, 'utf-8'));
+      const variant = catalog.breeds[0].variants[0];
+      assert.ok(
+        variant.accountRef.startsWith('acct-shared-migrated-'),
+        `accountRef should be rewritten to migrated ID, got: ${variant.accountRef}`,
+      );
+      assert.ok(
+        variant.providerProfileId.startsWith('acct-shared-migrated-'),
+        `providerProfileId should be rewritten to migrated ID, got: ${variant.providerProfileId}`,
+      );
     } finally {
       if (previousGlobalRoot === undefined) delete process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT;
       else process.env.CAT_CAFE_GLOBAL_CONFIG_ROOT = previousGlobalRoot;
