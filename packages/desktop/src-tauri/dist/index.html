@@ -67,41 +67,58 @@
   <div class="loader">
     <div class="spinner" id="spinner"></div>
     <h1>Cat Café</h1>
-    <p id="status">正在连接服务器...</p>
+    <p id="status">正在启动服务...</p>
     <div class="error" id="error">
       <p>无法连接到 Cat Café 服务器</p>
-      <p style="color: #888; margin-top: 0.5rem; font-size: 0.8rem;">请确保已运行 <code>pnpm start</code></p>
+      <p style="color: #888; margin-top: 0.5rem; font-size: 0.8rem;">服务正在启动中，或请设置 <code>CAT_CAFE_ROOT</code> 环境变量</p>
       <button class="retry-btn" onclick="tryConnect()">重试</button>
     </div>
   </div>
   <script>
-    const SERVER_URL = 'http://localhost:3003';
-    const MAX_RETRIES = 10;
+    const WEB_URL = 'http://localhost:13003';
+    const API_URL = 'http://localhost:13004/health';
+    const MAX_RETRIES = 30; // servers need time to boot
     let retries = 0;
 
     async function tryConnect() {
       document.getElementById('spinner').style.display = 'block';
       document.getElementById('error').style.display = 'none';
-      document.getElementById('status').textContent = '正在连接服务器...';
+      document.getElementById('status').textContent = '正在启动服务...';
       retries = 0;
       connect();
     }
 
-    async function connect() {
+    async function checkServer(url) {
       try {
-        const res = await fetch(SERVER_URL, { mode: 'no-cors' });
-        window.location.href = SERVER_URL;
-      } catch (e) {
-        retries++;
-        if (retries < MAX_RETRIES) {
-          document.getElementById('status').textContent =
-            `正在连接服务器... (${retries}/${MAX_RETRIES})`;
-          setTimeout(connect, 1000);
-        } else {
-          document.getElementById('spinner').style.display = 'none';
-          document.getElementById('status').style.display = 'none';
-          document.getElementById('error').style.display = 'block';
-        }
+        await fetch(url, { mode: 'no-cors' });
+        return true;
+      } catch { return false; }
+    }
+
+    async function connect() {
+      const [webOk, apiOk] = await Promise.all([
+        checkServer(WEB_URL),
+        checkServer(API_URL),
+      ]);
+
+      if (webOk && apiOk) {
+        document.getElementById('status').textContent = '就绪，正在加载...';
+        window.location.href = WEB_URL;
+        return;
+      }
+
+      retries++;
+      if (retries < MAX_RETRIES) {
+        const parts = [];
+        if (!apiOk) parts.push('API');
+        if (!webOk) parts.push('Web');
+        document.getElementById('status').textContent =
+          `等待 ${parts.join(' + ')} 启动... (${retries}/${MAX_RETRIES})`;
+        setTimeout(connect, 1500);
+      } else {
+        document.getElementById('spinner').style.display = 'none';
+        document.getElementById('status').style.display = 'none';
+        document.getElementById('error').style.display = 'block';
       }
     }
 
