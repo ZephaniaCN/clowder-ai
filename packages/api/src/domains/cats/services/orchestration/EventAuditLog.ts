@@ -199,6 +199,8 @@ export const AuditEventTypes = {
   SERVER_SHUTDOWN: 'server_shutdown',
   /** 运行时配置被更新 */
   CONFIG_UPDATED: 'config_updated',
+  /** Sensitive env var 被 owner 通过 Hub 写入（F136 Phase 1.5） */
+  ENV_SENSITIVE_WRITE: 'env_sensitive_write',
 
   // === 消息级审计 (茶话会夺魂 bug fix #37) ===
 

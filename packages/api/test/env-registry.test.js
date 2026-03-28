@@ -384,11 +384,55 @@ describe('PATCH /api/config/env (route)', () => {
     }
   });
 
-  it('rejects sensitive env vars from hub writes', async () => {
+  it('allows owner to write whitelisted sensitive env vars', async () => {
+    const { configRoutes } = await import('../dist/routes/config.js');
+    const tempRoot = mkdtempSync(resolve(tmpdir(), 'cat-cafe-env-'));
+    const envFilePath = resolve(tempRoot, '.env');
+    const auditEvents = [];
+    writeFileSync(envFilePath, 'OPENAI_API_KEY=sk-old\n', 'utf8');
+    setEnv('DEFAULT_OWNER_USER_ID', 'test-owner');
+
+    const app = Fastify({ logger: false });
+    try {
+      await configRoutes(app, {
+        projectRoot: tempRoot,
+        envFilePath,
+        auditLog: { append: async (event) => { auditEvents.push(event); } },
+      });
+      await app.ready();
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/api/config/env',
+        headers: { 'x-cat-cafe-user': 'test-owner' },
+        payload: {
+          updates: [{ name: 'OPENAI_API_KEY', value: 'sk-new' }],
+        },
+      });
+
+      assert.equal(res.statusCode, 200);
+      assert.match(readFileSync(envFilePath, 'utf8'), /OPENAI_API_KEY/);
+      assert.equal(process.env.OPENAI_API_KEY, 'sk-new');
+      // Must have both CONFIG_UPDATED and ENV_SENSITIVE_WRITE audit events
+      const sensitiveEvent = auditEvents.find((e) => e.type === 'env_sensitive_write');
+      assert.ok(sensitiveEvent, 'Should emit ENV_SENSITIVE_WRITE audit event');
+      assert.deepEqual(sensitiveEvent.data.keys, ['OPENAI_API_KEY']);
+      assert.equal(sensitiveEvent.data.operator, 'test-owner');
+      // Audit must NOT contain the value
+      assert.equal(sensitiveEvent.data.value, undefined);
+      assert.equal(sensitiveEvent.data.values, undefined);
+    } finally {
+      await app.close();
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects non-owner from writing sensitive env vars with 403', async () => {
     const { configRoutes } = await import('../dist/routes/config.js');
     const tempRoot = mkdtempSync(resolve(tmpdir(), 'cat-cafe-env-'));
     const envFilePath = resolve(tempRoot, '.env');
     writeFileSync(envFilePath, 'OPENAI_API_KEY=sk-old\n', 'utf8');
+    setEnv('DEFAULT_OWNER_USER_ID', 'test-owner');
 
     const app = Fastify({ logger: false });
     try {
@@ -408,10 +452,44 @@ describe('PATCH /api/config/env (route)', () => {
         },
       });
 
+      assert.equal(res.statusCode, 403);
+      const body = JSON.parse(res.payload);
+      assert.match(body.error, /owner/i);
+      assert.equal(readFileSync(envFilePath, 'utf8'), 'OPENAI_API_KEY=sk-old\n');
+    } finally {
+      await app.close();
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('still rejects non-whitelisted sensitive vars even from owner', async () => {
+    const { configRoutes } = await import('../dist/routes/config.js');
+    const tempRoot = mkdtempSync(resolve(tmpdir(), 'cat-cafe-env-'));
+    const envFilePath = resolve(tempRoot, '.env');
+    writeFileSync(envFilePath, 'FEISHU_APP_SECRET=old-secret\n', 'utf8');
+    setEnv('DEFAULT_OWNER_USER_ID', 'test-owner');
+
+    const app = Fastify({ logger: false });
+    try {
+      await configRoutes(app, {
+        projectRoot: tempRoot,
+        envFilePath,
+        auditLog: { append: async () => {} },
+      });
+      await app.ready();
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/api/config/env',
+        headers: { 'x-cat-cafe-user': 'test-owner' },
+        payload: {
+          updates: [{ name: 'FEISHU_APP_SECRET', value: 'new-secret' }],
+        },
+      });
+
       assert.equal(res.statusCode, 400);
       const body = JSON.parse(res.payload);
       assert.match(body.error, /not editable/);
-      assert.equal(readFileSync(envFilePath, 'utf8'), 'OPENAI_API_KEY=sk-old\n');
     } finally {
       await app.close();
       rmSync(tempRoot, { recursive: true, force: true });

@@ -870,3 +870,7 @@ export function isEditableEnvVar(def: EnvDefinition): boolean {
 export function isEditableEnvVarName(name: string): boolean {
   return ENV_VARS.some((def) => def.name === name && isHubVisibleEnvVar(def) && isEditableEnvVar(def));
 }
+
+export function isSensitiveEnvVarName(name: string): boolean {
+  return ENV_VARS.some((def) => def.name === name && def.sensitive);
+}

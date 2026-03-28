@@ -13,7 +13,7 @@ import { z } from 'zod';
 import { collectConfigSnapshot } from '../config/ConfigRegistry.js';
 import { configStore } from '../config/ConfigStore.js';
 import type { ConfigSnapshot } from '../config/config-snapshot.js';
-import { buildEnvSummary, ENV_CATEGORIES, isEditableEnvVarName } from '../config/env-registry.js';
+import { buildEnvSummary, ENV_CATEGORIES, isEditableEnvVarName, isSensitiveEnvVarName } from '../config/env-registry.js';
 import { updateRuntimeCoCreator } from '../config/runtime-cat-catalog.js';
 import { AuditEventTypes, getEventAuditLog } from '../domains/cats/services/orchestration/EventAuditLog.js';
 import { resolveActiveProjectRoot } from '../utils/active-project-root.js';
@@ -261,12 +261,23 @@ export async function configRoutes(app: FastifyInstance, opts: ConfigRoutesOptio
     }
 
     const updates = new Map<string, string | null>();
+    const sensitiveKeys: string[] = [];
     for (const update of parsed.data.updates) {
       if (!isEditableEnvVarName(update.name)) {
         reply.status(400);
         return { error: `Env var '${update.name}' is not editable from Hub` };
       }
+      if (isSensitiveEnvVarName(update.name)) sensitiveKeys.push(update.name);
       updates.set(update.name, update.value);
+    }
+
+    // Owner-only gate: sensitive env writes require the co-creator / owner identity
+    if (sensitiveKeys.length > 0) {
+      const ownerId = process.env.DEFAULT_OWNER_USER_ID || 'default-user';
+      if (operator !== ownerId) {
+        reply.status(403);
+        return { error: 'Sensitive env vars can only be updated by the owner' };
+      }
     }
 
     const current = existsSync(envFilePath) ? readFileSync(envFilePath, 'utf8') : '';
@@ -287,6 +298,17 @@ export async function configRoutes(app: FastifyInstance, opts: ConfigRoutesOptio
           operator,
         },
       });
+      // Specialized audit for sensitive writes — keys only, never log values
+      if (sensitiveKeys.length > 0) {
+        await auditLog.append({
+          type: AuditEventTypes.ENV_SENSITIVE_WRITE,
+          data: {
+            target: '.env',
+            keys: sensitiveKeys,
+            operator,
+          },
+        });
+      }
     } catch (err) {
       request.log.warn({ err, keys: [...updates.keys()] }, 'env config audit append failed');
     }
