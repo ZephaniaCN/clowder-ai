@@ -91,6 +91,14 @@ describe('fix(#185): console→Pino patch', () => {
     assert.ok(stderr.includes('[console.info]'), 'stderr should have [console.level] prefix');
   });
 
+  it('P2: printf-style formatting preserved in log msg', () => {
+    resetLogDir();
+    runLoggerScript(`console.log('id=%d name=%s', 42, 'foo');`);
+    const content = readAllLogs();
+    assert.ok(content.includes('id=42 name=foo'), 'printf placeholders should be interpolated');
+    assert.ok(!content.includes('%d'), '%d should not remain uninterpolated');
+  });
+
   it('P2: array containing sensitive object is redacted', () => {
     resetLogDir();
     runLoggerScript(`console.log([{ token: 'array-secret-token' }]);`);

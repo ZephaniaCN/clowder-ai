@@ -129,19 +129,20 @@ type PinoLevel = 'info' | 'warn' | 'error' | 'debug';
 function consoleToPino(level: PinoLevel, orig: (...a: unknown[]) => void): (...a: unknown[]) => void {
   return (...args: unknown[]) => {
     const merged: Record<string, unknown> = {};
-    let hasObj = false;
-    const parts: string[] = [];
+    const scalarParts: string[] = [];
     for (const a of args) {
       if (a !== null && typeof a === 'object') {
         collectFields(a, merged);
-        hasObj = true;
       } else {
-        parts.push(utilFormat(a));
+        scalarParts.push(utilFormat(a));
       }
     }
-    const msg = parts.join(' ') || `console.${level}`;
-    hasObj ? consoleLogger[level](merged, msg) : consoleLogger[level](msg);
-    // Preserve stderr capture for process-layer `2>>` redirection
+    const hasFields = Object.keys(merged).length > 0;
+    // When objects contribute redactable fields, use scalar-only msg to avoid
+    // leaking raw values. Otherwise use full utilFormat for printf interpolation.
+    const pinoMsg = hasFields ? scalarParts.join(' ') || `console.${level}` : utilFormat(...args);
+    hasFields ? consoleLogger[level](merged, pinoMsg) : consoleLogger[level](pinoMsg);
+    // stderr always gets full format for human-readable process-layer capture
     process.stderr.write(`[console.${level}] ${utilFormat(...args)}\n`);
     orig.apply(console, args);
   };
