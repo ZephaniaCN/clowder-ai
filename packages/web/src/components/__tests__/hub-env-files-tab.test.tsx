@@ -57,6 +57,16 @@ const MOCK_ENV_SUMMARY = {
       description: 'OpenAI API Key',
       category: 'server',
       sensitive: true,
+      runtimeEditable: true,
+      currentValue: '***',
+    },
+    {
+      name: 'FEISHU_APP_SECRET',
+      defaultValue: '(未设置)',
+      description: '飞书应用 App Secret',
+      category: 'server',
+      sensitive: true,
+      runtimeEditable: false,
       currentValue: '***',
     },
   ],
@@ -150,7 +160,11 @@ describe('HubEnvFilesTab', () => {
     expect(container.querySelector('input[aria-label="PREVIEW_GATEWAY_PORT"]')).toBeNull();
     expect(container.querySelector('input[aria-label="FRONTEND_URL"]')).toBeTruthy();
     expect(container.querySelector('input[aria-label="REDIS_URL"]')).toBeNull();
-    expect(container.querySelector('input[aria-label="OPENAI_API_KEY"]')).toBeNull();
+    expect(container.querySelector('input[aria-label="OPENAI_API_KEY"]')).toBeTruthy();
+    expect(container.querySelector('input[aria-label="FEISHU_APP_SECRET"]')).toBeNull();
+    expect(container.textContent).toContain('当前: ***');
+    expect(container.textContent).toContain('🔑 已配置');
+    expect(container.textContent).toContain('写入后立即生效，无需重启');
     expect(container.textContent).toContain('***');
 
     const frontendUrlInput = container.querySelector('input[aria-label="FRONTEND_URL"]') as HTMLInputElement;
@@ -174,7 +188,38 @@ describe('HubEnvFilesTab', () => {
     expect(String(patchCall?.[1]?.body)).toContain('http://localhost:3200');
     expect(String(patchCall?.[1]?.body)).not.toContain('REDIS_URL');
     expect(String(patchCall?.[1]?.body)).not.toContain('OPENAI_API_KEY');
+    expect(String(patchCall?.[1]?.body)).not.toContain('FEISHU_APP_SECRET');
     expect(container.textContent).toContain('已写回 .env 并刷新摘要；部分变量需重启相关服务生效');
+  });
+
+  it('renders writable sensitive vars as empty drafts and submits new secret only after input', async () => {
+    await act(async () => {
+      root.render(React.createElement(HubEnvFilesTab));
+    });
+    await flushEffects();
+
+    const openAiInput = container.querySelector('input[aria-label="OPENAI_API_KEY"]') as HTMLInputElement;
+    expect(openAiInput).toBeTruthy();
+    expect(openAiInput.value).toBe('');
+    expect(openAiInput.getAttribute('type')).toBe('password');
+
+    await changeField(openAiInput, 'sk-new-secret');
+
+    const saveButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent === '保存到 .env',
+    );
+    await act(async () => {
+      saveButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    await flushEffects();
+
+    const patchCall = mockApiFetch.mock.calls.find(
+      ([path, init]) => path === '/api/config/env' && init?.method === 'PATCH',
+    );
+    expect(patchCall).toBeTruthy();
+    expect(String(patchCall?.[1]?.body)).toContain('OPENAI_API_KEY');
+    expect(String(patchCall?.[1]?.body)).toContain('sk-new-secret');
+    expect(String(patchCall?.[1]?.body)).not.toContain('FEISHU_APP_SECRET');
   });
 
   it('shows a save error when /api/config/env PATCH fails', async () => {

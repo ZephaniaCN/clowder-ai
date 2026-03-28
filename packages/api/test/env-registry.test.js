@@ -9,7 +9,14 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { afterEach, describe, it } from 'node:test';
 import Fastify from 'fastify';
-import { buildEnvSummary, ENV_CATEGORIES, ENV_VARS, isEditableEnvVar, isEditableEnvVarName, maskUrlCredentials } from '../dist/config/env-registry.js';
+import {
+  buildEnvSummary,
+  ENV_CATEGORIES,
+  ENV_VARS,
+  isEditableEnvVar,
+  isEditableEnvVarName,
+  maskUrlCredentials,
+} from '../dist/config/env-registry.js';
 
 // Save and restore env vars around tests
 const savedEnv = {};
@@ -111,9 +118,15 @@ describe('env-registry', () => {
 
   it('non-whitelisted sensitive vars remain fail-closed (not editable)', () => {
     const READONLY_SENSITIVE = [
-      'CAT_CAFE_HOOK_TOKEN', 'CAT_CAFE_CALLBACK_TOKEN', 'TELEGRAM_BOT_TOKEN',
-      'FEISHU_APP_SECRET', 'FEISHU_VERIFICATION_TOKEN', 'DINGTALK_APP_SECRET',
-      'GITHUB_WEBHOOK_SECRET', 'GITHUB_REVIEW_IMAP_PASS', 'VAPID_PRIVATE_KEY',
+      'CAT_CAFE_HOOK_TOKEN',
+      'CAT_CAFE_CALLBACK_TOKEN',
+      'TELEGRAM_BOT_TOKEN',
+      'FEISHU_APP_SECRET',
+      'FEISHU_VERIFICATION_TOKEN',
+      'DINGTALK_APP_SECRET',
+      'GITHUB_WEBHOOK_SECRET',
+      'GITHUB_REVIEW_IMAP_PASS',
+      'VAPID_PRIVATE_KEY',
     ];
     for (const name of READONLY_SENSITIVE) {
       const def = ENV_VARS.find((v) => v.name === name);
@@ -397,7 +410,11 @@ describe('PATCH /api/config/env (route)', () => {
       await configRoutes(app, {
         projectRoot: tempRoot,
         envFilePath,
-        auditLog: { append: async (event) => { auditEvents.push(event); } },
+        auditLog: {
+          append: async (event) => {
+            auditEvents.push(event);
+          },
+        },
       });
       await app.ready();
 
