@@ -310,16 +310,16 @@ function EnvVarsSection({
                       <code className="shrink-0 font-mono text-[#6A5A50]">{v.name}</code>
                       <span className="truncate text-[#B59A88]">{v.description}</span>
                       {isSensitiveEditable(v) && (
-                        <span className={`shrink-0 text-[11px] ${v.currentValue ? 'text-[#77A777]' : 'text-[#D49266]'}`}>
+                        <span
+                          className={`shrink-0 text-[11px] ${v.currentValue ? 'text-[#77A777]' : 'text-[#D49266]'}`}
+                        >
                           {v.currentValue ? '🔑 已配置' : '⚠️ 未配置'}
                         </span>
                       )}
                     </div>
                     <div className="text-[11px] text-[#B59A88]">默认: {v.defaultValue}</div>
                     {isSensitiveEditable(v) && (
-                      <div className="font-mono text-[11px] text-[#B59A88]">
-                        当前: {v.currentValue ?? '未设置'}
-                      </div>
+                      <div className="font-mono text-[11px] text-[#B59A88]">当前: {v.currentValue ?? '未设置'}</div>
                     )}
                     {!isEditableVariable(v) && (
                       <div className={`font-mono text-[11px] ${v.currentValue ? 'text-[#6A5A50]' : 'text-[#D4C5BA]'}`}>
@@ -336,8 +336,12 @@ function EnvVarsSection({
                         onChange={(e) => onDraftChange(v.name, e.target.value)}
                         placeholder={
                           isSensitiveEditable(v)
-                            ? v.currentValue ? '输入新值以替换...' : '输入值以配置...'
-                            : isMaskedUrlVariable(v) ? '保持当前值（已脱敏）' : v.defaultValue
+                            ? v.currentValue
+                              ? '输入新值以替换...'
+                              : '输入值以配置...'
+                            : isMaskedUrlVariable(v)
+                              ? '保持当前值（已脱敏）'
+                              : v.defaultValue
                         }
                         className="rounded-[10px] border border-[#E8DCCF] bg-[#F7F3F0] px-3 py-2 font-mono text-xs text-[#6A5A50]"
                       />
