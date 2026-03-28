@@ -47,7 +47,11 @@ export interface EnvDefinition {
   maskMode?: 'url';
   /** If false, keep internal-only and do not surface in Hub env editor */
   hubVisible?: boolean;
-  /** If false, value is bootstrap-only and cannot be edited at runtime from Hub */
+  /**
+   * If false, value is bootstrap-only and cannot be edited at runtime from Hub.
+   * For sensitive vars: must be explicitly `true` to allow writes (fail-closed).
+   * For non-sensitive vars: defaults to editable unless explicitly `false`.
+   */
   runtimeEditable?: boolean;
 }
 
@@ -591,6 +595,7 @@ export const ENV_VARS: EnvDefinition[] = [
     description: 'OpenAI API Key (api_key 模式用)',
     category: 'codex',
     sensitive: true,
+    runtimeEditable: true,
   },
 
   // --- dare ---
@@ -770,6 +775,7 @@ export const ENV_VARS: EnvDefinition[] = [
     description: 'GitHub Personal Access Token (MCP 用)',
     category: 'github_review',
     sensitive: true,
+    runtimeEditable: true,
   },
 
   // --- evidence (F102 记忆系统) ---
@@ -814,6 +820,7 @@ export const ENV_VARS: EnvDefinition[] = [
     description: 'Phase G 摘要调度用的反代 API Key',
     category: 'evidence',
     sensitive: true,
+    runtimeEditable: true,
   },
 ];
 
@@ -855,7 +862,9 @@ export function buildEnvSummary(): Array<EnvDefinition & { currentValue: string 
 }
 
 export function isEditableEnvVar(def: EnvDefinition): boolean {
-  return def.runtimeEditable !== false && !def.sensitive;
+  // Sensitive vars: fail-closed — must explicitly opt in with runtimeEditable: true
+  // Non-sensitive vars: opt-out — editable unless explicitly runtimeEditable: false
+  return def.sensitive ? def.runtimeEditable === true : def.runtimeEditable !== false;
 }
 
 export function isEditableEnvVarName(name: string): boolean {

@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { afterEach, describe, it } from 'node:test';
 import Fastify from 'fastify';
-import { buildEnvSummary, ENV_CATEGORIES, ENV_VARS, maskUrlCredentials } from '../dist/config/env-registry.js';
+import { buildEnvSummary, ENV_CATEGORIES, ENV_VARS, isEditableEnvVar, isEditableEnvVarName, maskUrlCredentials } from '../dist/config/env-registry.js';
 
 // Save and restore env vars around tests
 const savedEnv = {};
@@ -94,6 +94,33 @@ describe('env-registry', () => {
       const envVar = ENV_VARS.find((v) => v.name === name);
       assert.ok(envVar, `${name} should be in registry`);
       assert.equal(envVar.runtimeEditable, false, `${name} should be bootstrap-only`);
+    }
+  });
+
+  it('whitelisted sensitive vars are marked runtimeEditable for hub writes', () => {
+    const WRITABLE_SENSITIVE = ['OPENAI_API_KEY', 'F102_API_KEY', 'GITHUB_MCP_PAT'];
+    for (const name of WRITABLE_SENSITIVE) {
+      const def = ENV_VARS.find((v) => v.name === name);
+      assert.ok(def, `${name} should be in registry`);
+      assert.equal(def.sensitive, true, `${name} should be sensitive`);
+      assert.equal(def.runtimeEditable, true, `${name} should be runtimeEditable`);
+      assert.equal(isEditableEnvVar(def), true, `isEditableEnvVar(${name}) should return true`);
+      assert.equal(isEditableEnvVarName(name), true, `isEditableEnvVarName('${name}') should return true`);
+    }
+  });
+
+  it('non-whitelisted sensitive vars remain fail-closed (not editable)', () => {
+    const READONLY_SENSITIVE = [
+      'CAT_CAFE_HOOK_TOKEN', 'CAT_CAFE_CALLBACK_TOKEN', 'TELEGRAM_BOT_TOKEN',
+      'FEISHU_APP_SECRET', 'FEISHU_VERIFICATION_TOKEN', 'DINGTALK_APP_SECRET',
+      'GITHUB_WEBHOOK_SECRET', 'GITHUB_REVIEW_IMAP_PASS', 'VAPID_PRIVATE_KEY',
+    ];
+    for (const name of READONLY_SENSITIVE) {
+      const def = ENV_VARS.find((v) => v.name === name);
+      assert.ok(def, `${name} should be in registry`);
+      assert.equal(def.sensitive, true, `${name} should be sensitive`);
+      assert.equal(isEditableEnvVar(def), false, `isEditableEnvVar(${name}) should return false`);
+      assert.equal(isEditableEnvVarName(name), false, `isEditableEnvVarName('${name}') should return false`);
     }
   });
 
