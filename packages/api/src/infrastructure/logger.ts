@@ -96,30 +96,41 @@ export function createModuleLogger(module: string): pino.Logger {
 export const LOG_DIR_PATH = LOG_DIR;
 
 /**
- * KD-7: Redirect unmigrated console.* to both Pino log file AND stderr.
+ * KD-7: Redirect unmigrated console.* to Pino log file.
  *
- * - Pino child logger (`module: 'console'`) ensures console.* output is
- *   persisted in the rotating log file with the same redaction & format.
- * - stderr write preserved for process-layer `2>>` capture (orphan-free).
+ * Objects are passed as structured merge-objects so Pino redaction applies
+ * (token, apiKey, etc. are masked).  Scalar args become the `msg` string.
  */
 const consoleLogger = logger.child({ module: 'console' });
 
 const origLog = console.log;
 const origWarn = console.warn;
 const origError = console.error;
+const origInfo = console.info;
+const origDebug = console.debug;
 
-console.log = (...args: unknown[]) => {
-  const msg = utilFormat(...args);
-  consoleLogger.info(msg);
-  origLog.apply(console, args);
-};
-console.warn = (...args: unknown[]) => {
-  const msg = utilFormat(...args);
-  consoleLogger.warn(msg);
-  origWarn.apply(console, args);
-};
-console.error = (...args: unknown[]) => {
-  const msg = utilFormat(...args);
-  consoleLogger.error(msg);
-  origError.apply(console, args);
-};
+type PinoLevel = 'info' | 'warn' | 'error' | 'debug';
+function consoleToPino(level: PinoLevel, orig: (...a: unknown[]) => void): (...a: unknown[]) => void {
+  return (...args: unknown[]) => {
+    const merged: Record<string, unknown> = {};
+    let hasObj = false;
+    const parts: string[] = [];
+    for (const a of args) {
+      if (a !== null && typeof a === 'object' && !Array.isArray(a) && !(a instanceof Error)) {
+        Object.assign(merged, a as Record<string, unknown>);
+        hasObj = true;
+      } else {
+        parts.push(utilFormat(a));
+      }
+    }
+    const msg = parts.join(' ') || `console.${level}`;
+    hasObj ? consoleLogger[level](merged, msg) : consoleLogger[level](msg);
+    orig.apply(console, args);
+  };
+}
+
+console.log = consoleToPino('info', origLog);
+console.warn = consoleToPino('warn', origWarn);
+console.error = consoleToPino('error', origError);
+console.info = consoleToPino('info', origInfo);
+console.debug = consoleToPino('debug', origDebug);
