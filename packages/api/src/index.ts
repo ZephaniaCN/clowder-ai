@@ -817,10 +817,49 @@ async function main(): Promise<void> {
   const packStoreDir = join(findMonorepoRoot(process.cwd()), '.cat-cafe', 'packs');
   const packStore = new PackStore(packStoreDir);
 
+  const toolUsageArchiver = redis
+    ? new (await import('./domains/cats/services/tool-usage/ToolUsageArchiver.js')).ToolUsageArchiver(
+        join(findMonorepoRoot(process.cwd()), '.cat-cafe', 'tool-usage-archive.jsonl'),
+      )
   // F150: Tool usage counter (fire-and-forget INCR on tool_use events)
-  const toolUsageCounter = redis
-    ? new (await import('./domains/cats/services/tool-usage/ToolUsageCounter.js')).ToolUsageCounter(redis)
     : undefined;
+  const toolUsageCounter = redis
+    ? new (await import('./domains/cats/services/tool-usage/ToolUsageCounter.js')).ToolUsageCounter(
+        redis,
+        toolUsageArchiver,
+      )
+    : undefined;
+
+  // F142: Daily archive sweep — persist expiring Redis counters to JSONL
+  if (toolUsageCounter && toolUsageArchiver) {
+    const sweepLog = (await import('./infrastructure/logger.js')).createModuleLogger('tool-usage-sweep');
+    const runSweep = async () => {
+      try {
+        const archivedDates = await toolUsageArchiver.getArchivedDates();
+        // Archive days 85–89 ago (buffer before 90-day TTL expiry)
+        const now = new Date();
+        let archived = 0;
+        for (let offset = 85; offset <= 89; offset++) {
+          const d = new Date(now);
+          d.setDate(d.getDate() - offset);
+          const dateStr = d.toISOString().slice(0, 10);
+          if (archivedDates.has(dateStr)) continue;
+          const entries = await toolUsageCounter.archiveDate(dateStr);
+          if (entries.length > 0) {
+            archived += await toolUsageArchiver.archiveEntries(entries);
+          }
+        }
+        if (archived > 0) sweepLog.info({ archived }, 'Tool usage archive sweep completed');
+      } catch (err) {
+        sweepLog.warn({ err }, 'Tool usage archive sweep failed');
+      }
+    };
+    // First sweep 30s after startup, then daily
+    const startupTimer = setTimeout(runSweep, 30_000);
+    startupTimer.unref();
+    const dailyTimer = setInterval(runSweep, 24 * 60 * 60 * 1000);
+    dailyTimer.unref();
+  }
 
   // Shared AgentRouter — used by messagesRoutes and invocationsRoutes
   router = new AgentRouter({

@@ -91,6 +91,7 @@ export function HubToolUsageTab() {
             <option value={14}>近 14 天</option>
             <option value={30}>近 30 天</option>
             <option value={90}>近 90 天</option>
+            <option value={0}>全部</option>
           </select>
           <button
             type="button"
@@ -117,7 +118,7 @@ export function HubToolUsageTab() {
         <>
           <SummaryCards total={total} byCategory={byCat} />
           <DailyTrend daily={report.daily} />
-          <TopToolsTable tools={report.topTools} total={total} />
+          <TopToolsTable tools={report.topTools} />
           <ByCatSection byCat={report.byCat} />
         </>
       )}
@@ -157,78 +158,63 @@ function SummaryCards({ total, byCategory }: { total: number; byCategory: Record
   );
 }
 
-/* ── Daily trend: stacked bars ── */
+/* ── Daily trend: horizontal rows with stacked bar + numbers ── */
 function DailyTrend({ daily }: { daily: ToolUsageReport['daily'] }) {
   if (daily.length === 0) return null;
   const maxDay = Math.max(...daily.map((d) => d.native + d.mcp + d.skill), 1);
+  const sorted = [...daily].reverse();
 
   return (
     <section className="space-y-3 rounded-xl border border-[#E8DDD2] bg-[#FDF8F3] p-4">
-      <h4 className="text-xs font-semibold text-[#5C4A3A]">每日使用趋势</h4>
-      <div className="flex items-end gap-1" style={{ height: 120 }}>
-        {[...daily].reverse().map((day) => {
+      <div className="flex items-center justify-between">
+        <h4 className="text-xs font-semibold text-[#5C4A3A]">每日使用趋势</h4>
+        <div className="flex gap-4 text-[10px]">
+          {CATEGORIES.map((cat) => {
+            const s = CATEGORY_STYLE[cat];
+            return (
+              <span key={cat} className="flex items-center gap-1" style={{ color: s.color }}>
+                <span className="inline-block h-2 w-2 rounded-sm" style={{ backgroundColor: s.color }} />
+                {s.label}
+              </span>
+            );
+          })}
+        </div>
+      </div>
+      <div className="space-y-2">
+        {sorted.map((day) => {
           const dayTotal = day.native + day.mcp + day.skill;
-          const height = (dayTotal / maxDay) * 100;
+          const pct = (dayTotal / maxDay) * 100;
           return (
-            <div key={day.date} className="group relative flex flex-1 flex-col items-center">
-              <div className="flex w-full flex-col" style={{ height: 100 }}>
-                <div className="flex-1" />
-                <div className="flex w-full flex-col overflow-hidden rounded-t-md" style={{ height: `${height}%` }}>
-                  {dayTotal > 0 && (
-                    <>
-                      {day.skill > 0 && (
-                        <div
-                          className="w-full"
-                          style={{
-                            height: `${(day.skill / dayTotal) * 100}%`,
-                            backgroundColor: CATEGORY_STYLE.skill.color,
-                            minHeight: 2,
-                          }}
-                        />
-                      )}
-                      {day.mcp > 0 && (
-                        <div
-                          className="w-full"
-                          style={{
-                            height: `${(day.mcp / dayTotal) * 100}%`,
-                            backgroundColor: CATEGORY_STYLE.mcp.color,
-                            minHeight: 2,
-                          }}
-                        />
-                      )}
-                      {day.native > 0 && (
-                        <div
-                          className="w-full"
-                          style={{
-                            height: `${(day.native / dayTotal) * 100}%`,
-                            backgroundColor: CATEGORY_STYLE.native.color,
-                            minHeight: 2,
-                          }}
-                        />
-                      )}
-                    </>
-                  )}
+            <div key={day.date} className="flex items-center gap-3 text-xs">
+              <span className="w-12 shrink-0 text-right tabular-nums text-[11px] text-[#A08A76]">
+                {day.date.slice(5)}
+              </span>
+              <div className="flex h-6 flex-1 items-center">
+                <div className="flex h-full overflow-hidden rounded-md" style={{ width: `${Math.max(pct, 3)}%` }}>
+                  {CATEGORIES.map((cat) => {
+                    const val = day[cat];
+                    if (val === 0) return null;
+                    return (
+                      <div
+                        key={cat}
+                        className="h-full"
+                        style={{
+                          width: `${(val / dayTotal) * 100}%`,
+                          backgroundColor: CATEGORY_STYLE[cat].color,
+                          minWidth: 3,
+                        }}
+                      />
+                    );
+                  })}
                 </div>
               </div>
-              <span className="mt-1 text-[9px] text-[#A08A76]">{day.date.slice(5)}</span>
-              {/* Tooltip */}
-              <div className="pointer-events-none absolute -top-12 z-10 hidden whitespace-nowrap rounded-lg bg-[#5C4A3A] px-2.5 py-1.5 text-[10px] text-white shadow-md group-hover:block">
-                <div className="font-medium">{day.date}</div>
-                <div className="opacity-80">{dayTotal} 次调用</div>
-              </div>
+              <span className="w-20 shrink-0 tabular-nums text-[11px] text-[#5C4A3A]">
+                <span className="font-medium">{dayTotal}</span>
+                <span className="ml-1 text-[10px] text-[#A08A76]">
+                  ({day.native}/{day.mcp}/{day.skill})
+                </span>
+              </span>
             </div>
-          );
-        })}
-      </div>
-      {/* Legend */}
-      <div className="flex justify-center gap-5 text-[10px]">
-        {CATEGORIES.map((cat) => {
-          const style = CATEGORY_STYLE[cat];
-          return (
-            <span key={cat} className="flex items-center gap-1.5" style={{ color: style.color }}>
-              <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: style.color }} />
-              {style.label}
-            </span>
           );
         })}
       </div>
@@ -236,50 +222,52 @@ function DailyTrend({ daily }: { daily: ToolUsageReport['daily'] }) {
   );
 }
 
-/* ── Top tools leaderboard ── */
-function TopToolsTable({ tools, total }: { tools: ToolUsageReport['topTools']; total: number }) {
+/* ── Top tools leaderboard — one mini-list per category ── */
+function TopToolsTable({ tools }: { tools: ToolUsageReport['topTools'] }) {
   if (tools.length === 0) return null;
-  const maxCount = tools[0]?.count ?? 1;
+  const grouped = CATEGORIES.map((cat) => ({
+    cat,
+    style: CATEGORY_STYLE[cat],
+    items: tools.filter((t) => t.category === cat),
+  })).filter((g) => g.items.length > 0);
 
   return (
-    <section className="space-y-3 rounded-xl border border-[#E8DDD2] bg-white p-4">
-      <h4 className="text-xs font-semibold text-[#5C4A3A]">工具热度排行</h4>
-      <div className="space-y-1.5">
-        {tools.map((tool, i) => {
-          const style = CATEGORY_STYLE[tool.category] ?? { color: '#6b7280', bg: '#f3f4f6', label: tool.category };
-          return (
-            <div key={`${tool.category}:${tool.name}`} className="flex items-center gap-2 text-xs">
-              <span className="w-5 text-right text-[11px] font-medium text-[#A08A76]">{i + 1}</span>
-              <span
-                className="shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-medium"
-                style={{ backgroundColor: style.bg, color: style.color }}
-              >
-                {style.label}
-              </span>
-              <span className="min-w-0 flex-1 truncate font-medium text-[#5C4A3A]" title={tool.name}>
-                {tool.name}
-              </span>
-              <div className="flex w-28 items-center">
-                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-100">
-                  <div
-                    className="h-full rounded-full transition-all"
-                    style={{
-                      width: `${(tool.count / maxCount) * 100}%`,
-                      backgroundColor: style.color,
-                      opacity: 0.7,
-                    }}
-                  />
+    <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${grouped.length}, minmax(0, 1fr))` }}>
+      {grouped.map(({ cat, style, items }) => {
+        const maxCount = items[0]?.count ?? 1;
+        return (
+          <section key={cat} className="space-y-2 rounded-xl border border-[#E8DDD2] bg-white p-3">
+            <h4 className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: style.color }}>
+              <span>{style.icon}</span>
+              {style.label}
+            </h4>
+            <div className="space-y-1">
+              {items.map((tool, i) => (
+                <div key={`${cat}:${tool.name}`} className="flex items-center gap-1.5 text-xs">
+                  <span className="w-4 text-right text-[10px] text-[#A08A76]">{i + 1}</span>
+                  <span className="min-w-0 flex-1 truncate text-[#5C4A3A]" title={tool.name}>
+                    {tool.name}
+                  </span>
+                  <div className="flex w-16 items-center">
+                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-100">
+                      <div
+                        className="h-full rounded-full"
+                        style={{
+                          width: `${(tool.count / maxCount) * 100}%`,
+                          backgroundColor: style.color,
+                          opacity: 0.7,
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <span className="w-10 text-right tabular-nums text-[11px] text-[#5C4A3A]">{tool.count}</span>
                 </div>
-              </div>
-              <span className="w-14 text-right tabular-nums text-[#5C4A3A]">
-                {tool.count}
-                <span className="ml-0.5 text-[10px] text-[#A08A76]">({Math.round((tool.count / total) * 100)}%)</span>
-              </span>
+              ))}
             </div>
-          );
-        })}
-      </div>
-    </section>
+          </section>
+        );
+      })}
+    </div>
   );
 }
 
