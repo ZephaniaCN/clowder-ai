@@ -26,17 +26,14 @@ const CAT_LABELS: Record<string, string> = {
   opencode: '金渐层',
 };
 
-const CATEGORY_COLORS: Record<string, string> = {
-  native: '#6366f1',
-  mcp: '#f59e0b',
-  skill: '#10b981',
+/* Cozy Swiss palette — warm tones aligned with Cat Café design language */
+const CATEGORY_STYLE: Record<string, { color: string; bg: string; label: string; icon: string }> = {
+  native: { color: '#7C6CA8', bg: '#F3F0FA', label: '原生工具', icon: '🔧' },
+  mcp: { color: '#D4915A', bg: '#FDF3EB', label: 'MCP 桥接', icon: '🌉' },
+  skill: { color: '#6BA589', bg: '#EDF7F2', label: '技能调用', icon: '✨' },
 };
 
-const CATEGORY_LABELS: Record<string, string> = {
-  native: 'Native',
-  mcp: 'MCP',
-  skill: 'Skill',
-};
+const CATEGORIES = ['native', 'mcp', 'skill'] as const;
 
 function catLabel(catId: string): string {
   return CAT_LABELS[catId] ?? catId;
@@ -78,14 +75,17 @@ export function HubToolUsageTab() {
 
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-800">工具使用统计</h3>
+      {/* Header — cafe menu style */}
+      <div className="flex items-center justify-between rounded-xl bg-[#FDF8F3] px-4 py-3">
+        <div>
+          <h3 className="text-sm font-semibold text-[#5C4A3A]">工具使用日志</h3>
+          <p className="text-[11px] text-[#A08A76]">猫猫们的每日工具箱使用记录</p>
+        </div>
         <div className="flex items-center gap-2">
           <select
             value={days}
             onChange={(e) => setDays(Number(e.target.value))}
-            className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700"
+            className="rounded-lg border border-[#E8DDD2] bg-white px-2 py-1 text-xs text-[#5C4A3A]"
           >
             <option value={7}>近 7 天</option>
             <option value={14}>近 14 天</option>
@@ -96,31 +96,28 @@ export function HubToolUsageTab() {
             type="button"
             onClick={() => fetchData(true)}
             disabled={loading}
-            className="rounded-md bg-gray-800 px-3 py-1 text-xs text-white hover:bg-gray-700 disabled:opacity-50"
+            className="rounded-lg bg-[#5C4A3A] px-3 py-1 text-xs text-white hover:bg-[#7A6555] disabled:opacity-50"
           >
-            {loading ? '加载中...' : '刷新'}
+            {loading ? '冲泡中...' : '刷新'}
           </button>
         </div>
       </div>
 
-      {error && <div className="rounded bg-red-50 px-2 py-1 text-xs text-red-500">{error}</div>}
+      {error && <div className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{error}</div>}
 
       {!error && total === 0 && !loading && (
-        <div className="py-8 text-center text-xs text-gray-400">暂无工具使用记录（数据从 Phase A 部署后开始采集）</div>
+        <div className="rounded-xl border border-dashed border-[#E8DDD2] bg-[#FDF8F3] py-10 text-center">
+          <div className="text-2xl">☕</div>
+          <p className="mt-2 text-xs text-[#A08A76]">还没有工具使用记录</p>
+          <p className="text-[11px] text-[#C4B5A4]">猫猫们开始工作后，数据会自动出现在这里</p>
+        </div>
       )}
 
       {total > 0 && report && (
         <>
-          {/* Summary cards */}
           <SummaryCards total={total} byCategory={byCat} />
-
-          {/* Daily trend */}
           <DailyTrend daily={report.daily} />
-
-          {/* Top tools */}
           <TopToolsTable tools={report.topTools} total={total} />
-
-          {/* By cat */}
           <ByCatSection byCat={report.byCat} />
         </>
       )}
@@ -128,37 +125,46 @@ export function HubToolUsageTab() {
   );
 }
 
+/* ── Summary: 3 category cards + total ── */
 function SummaryCards({ total, byCategory }: { total: number; byCategory: Record<string, number> }) {
   return (
     <div className="grid grid-cols-4 gap-3">
-      <div className="rounded-xl border border-gray-200 bg-white p-3 text-center">
-        <div className="text-2xl font-bold text-gray-900">{total.toLocaleString()}</div>
-        <div className="text-xs text-gray-500">总调用</div>
+      <div className="rounded-xl border border-[#E8DDD2] bg-[#FDF8F3] p-3 text-center">
+        <div className="text-2xl font-bold text-[#5C4A3A]">{total.toLocaleString()}</div>
+        <div className="text-[11px] text-[#A08A76]">总调用</div>
       </div>
-      {(['native', 'mcp', 'skill'] as const).map((cat) => (
-        <div key={cat} className="rounded-xl border border-gray-200 bg-white p-3 text-center">
-          <div className="text-2xl font-bold" style={{ color: CATEGORY_COLORS[cat] }}>
-            {(byCategory[cat] ?? 0).toLocaleString()}
+      {CATEGORIES.map((cat) => {
+        const style = CATEGORY_STYLE[cat];
+        const count = byCategory[cat] ?? 0;
+        return (
+          <div
+            key={cat}
+            className="rounded-xl border border-gray-100 p-3 text-center"
+            style={{ backgroundColor: style.bg }}
+          >
+            <div className="text-lg">{style.icon}</div>
+            <div className="text-xl font-bold" style={{ color: style.color }}>
+              {count.toLocaleString()}
+            </div>
+            <div className="text-[11px]" style={{ color: style.color }}>
+              {style.label}
+              {total > 0 && <span className="ml-1 opacity-60">({Math.round((count / total) * 100)}%)</span>}
+            </div>
           </div>
-          <div className="text-xs text-gray-500">
-            {CATEGORY_LABELS[cat]}
-            {total > 0 && (
-              <span className="ml-1 text-gray-400">({Math.round(((byCategory[cat] ?? 0) / total) * 100)}%)</span>
-            )}
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
 
+/* ── Daily trend: stacked bars ── */
 function DailyTrend({ daily }: { daily: ToolUsageReport['daily'] }) {
   if (daily.length === 0) return null;
   const maxDay = Math.max(...daily.map((d) => d.native + d.mcp + d.skill), 1);
 
   return (
-    <section className="space-y-2 rounded-xl border border-gray-200 bg-white p-4">
-      <h4 className="text-xs font-semibold text-gray-600">每日趋势</h4>
+    <section className="space-y-3 rounded-xl border border-[#E8DDD2] bg-[#FDF8F3] p-4">
+      <h4 className="text-xs font-semibold text-[#5C4A3A]">每日使用趋势</h4>
       <div className="flex items-end gap-1" style={{ height: 120 }}>
         {[...daily].reverse().map((day) => {
           const dayTotal = day.native + day.mcp + day.skill;
@@ -167,101 +173,117 @@ function DailyTrend({ daily }: { daily: ToolUsageReport['daily'] }) {
             <div key={day.date} className="group relative flex flex-1 flex-col items-center">
               <div className="flex w-full flex-col" style={{ height: 100 }}>
                 <div className="flex-1" />
-                <div className="flex w-full flex-col rounded-t" style={{ height: `${height}%` }}>
+                <div className="flex w-full flex-col overflow-hidden rounded-t-md" style={{ height: `${height}%` }}>
                   {dayTotal > 0 && (
                     <>
-                      <div
-                        className="w-full rounded-t"
-                        style={{
-                          height: `${(day.skill / dayTotal) * 100}%`,
-                          backgroundColor: CATEGORY_COLORS.skill,
-                          minHeight: day.skill > 0 ? 2 : 0,
-                        }}
-                      />
-                      <div
-                        className="w-full"
-                        style={{
-                          height: `${(day.mcp / dayTotal) * 100}%`,
-                          backgroundColor: CATEGORY_COLORS.mcp,
-                          minHeight: day.mcp > 0 ? 2 : 0,
-                        }}
-                      />
-                      <div
-                        className="w-full rounded-b"
-                        style={{
-                          height: `${(day.native / dayTotal) * 100}%`,
-                          backgroundColor: CATEGORY_COLORS.native,
-                          minHeight: day.native > 0 ? 2 : 0,
-                        }}
-                      />
+                      {day.skill > 0 && (
+                        <div
+                          className="w-full"
+                          style={{
+                            height: `${(day.skill / dayTotal) * 100}%`,
+                            backgroundColor: CATEGORY_STYLE.skill.color,
+                            minHeight: 2,
+                          }}
+                        />
+                      )}
+                      {day.mcp > 0 && (
+                        <div
+                          className="w-full"
+                          style={{
+                            height: `${(day.mcp / dayTotal) * 100}%`,
+                            backgroundColor: CATEGORY_STYLE.mcp.color,
+                            minHeight: 2,
+                          }}
+                        />
+                      )}
+                      {day.native > 0 && (
+                        <div
+                          className="w-full"
+                          style={{
+                            height: `${(day.native / dayTotal) * 100}%`,
+                            backgroundColor: CATEGORY_STYLE.native.color,
+                            minHeight: 2,
+                          }}
+                        />
+                      )}
                     </>
                   )}
                 </div>
               </div>
-              <span className="mt-1 text-[9px] text-gray-400">{day.date.slice(5)}</span>
+              <span className="mt-1 text-[9px] text-[#A08A76]">{day.date.slice(5)}</span>
               {/* Tooltip */}
-              <div className="pointer-events-none absolute -top-10 hidden rounded bg-gray-900 px-2 py-1 text-[10px] text-white shadow group-hover:block">
-                {day.date}: {dayTotal}
+              <div className="pointer-events-none absolute -top-12 z-10 hidden whitespace-nowrap rounded-lg bg-[#5C4A3A] px-2.5 py-1.5 text-[10px] text-white shadow-md group-hover:block">
+                <div className="font-medium">{day.date}</div>
+                <div className="opacity-80">{dayTotal} 次调用</div>
               </div>
             </div>
           );
         })}
       </div>
       {/* Legend */}
-      <div className="flex justify-center gap-4 text-[10px] text-gray-500">
-        {(['native', 'mcp', 'skill'] as const).map((cat) => (
-          <span key={cat} className="flex items-center gap-1">
-            <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: CATEGORY_COLORS[cat] }} />
-            {CATEGORY_LABELS[cat]}
-          </span>
-        ))}
+      <div className="flex justify-center gap-5 text-[10px]">
+        {CATEGORIES.map((cat) => {
+          const style = CATEGORY_STYLE[cat];
+          return (
+            <span key={cat} className="flex items-center gap-1.5" style={{ color: style.color }}>
+              <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: style.color }} />
+              {style.label}
+            </span>
+          );
+        })}
       </div>
     </section>
   );
 }
 
+/* ── Top tools leaderboard ── */
 function TopToolsTable({ tools, total }: { tools: ToolUsageReport['topTools']; total: number }) {
   if (tools.length === 0) return null;
   const maxCount = tools[0]?.count ?? 1;
 
   return (
-    <section className="space-y-2 rounded-xl border border-gray-200 bg-white p-4">
-      <h4 className="text-xs font-semibold text-gray-600">Top 工具排行</h4>
-      <div className="space-y-1">
-        {tools.map((tool, i) => (
-          <div key={`${tool.category}:${tool.name}`} className="flex items-center gap-2 text-xs">
-            <span className="w-5 text-right text-gray-400">{i + 1}</span>
-            <span
-              className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium text-white"
-              style={{ backgroundColor: CATEGORY_COLORS[tool.category] ?? '#6b7280' }}
-            >
-              {CATEGORY_LABELS[tool.category] ?? tool.category}
-            </span>
-            <span className="min-w-0 flex-1 truncate font-medium text-gray-700" title={tool.name}>
-              {tool.name}
-            </span>
-            <div className="flex w-32 items-center gap-1">
-              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-100">
-                <div
-                  className="h-full rounded-full"
-                  style={{
-                    width: `${(tool.count / maxCount) * 100}%`,
-                    backgroundColor: CATEGORY_COLORS[tool.category] ?? '#6b7280',
-                  }}
-                />
+    <section className="space-y-3 rounded-xl border border-[#E8DDD2] bg-white p-4">
+      <h4 className="text-xs font-semibold text-[#5C4A3A]">工具热度排行</h4>
+      <div className="space-y-1.5">
+        {tools.map((tool, i) => {
+          const style = CATEGORY_STYLE[tool.category] ?? { color: '#6b7280', bg: '#f3f4f6', label: tool.category };
+          return (
+            <div key={`${tool.category}:${tool.name}`} className="flex items-center gap-2 text-xs">
+              <span className="w-5 text-right text-[11px] font-medium text-[#A08A76]">{i + 1}</span>
+              <span
+                className="shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-medium"
+                style={{ backgroundColor: style.bg, color: style.color }}
+              >
+                {style.label}
+              </span>
+              <span className="min-w-0 flex-1 truncate font-medium text-[#5C4A3A]" title={tool.name}>
+                {tool.name}
+              </span>
+              <div className="flex w-28 items-center">
+                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-100">
+                  <div
+                    className="h-full rounded-full transition-all"
+                    style={{
+                      width: `${(tool.count / maxCount) * 100}%`,
+                      backgroundColor: style.color,
+                      opacity: 0.7,
+                    }}
+                  />
+                </div>
               </div>
+              <span className="w-14 text-right tabular-nums text-[#5C4A3A]">
+                {tool.count}
+                <span className="ml-0.5 text-[10px] text-[#A08A76]">({Math.round((tool.count / total) * 100)}%)</span>
+              </span>
             </div>
-            <span className="w-12 text-right tabular-nums text-gray-500">
-              {tool.count}
-              <span className="ml-0.5 text-gray-400">({Math.round((tool.count / total) * 100)}%)</span>
-            </span>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </section>
   );
 }
 
+/* ── Per-cat distribution ── */
 function ByCatSection({ byCat }: { byCat: Record<string, Record<string, number>> }) {
   const entries = Object.entries(byCat).sort(
     (a, b) => Object.values(b[1]).reduce((s, v) => s + v, 0) - Object.values(a[1]).reduce((s, v) => s + v, 0),
@@ -269,32 +291,33 @@ function ByCatSection({ byCat }: { byCat: Record<string, Record<string, number>>
   if (entries.length === 0) return null;
 
   return (
-    <section className="space-y-2 rounded-xl border border-gray-200 bg-white p-4">
-      <h4 className="text-xs font-semibold text-gray-600">按猫分布</h4>
+    <section className="space-y-3 rounded-xl border border-[#E8DDD2] bg-white p-4">
+      <h4 className="text-xs font-semibold text-[#5C4A3A]">猫猫工具使用分布</h4>
       <div className="space-y-2">
         {entries.map(([catId, cats]) => {
           const catTotal = Object.values(cats).reduce((s, v) => s + v, 0);
           return (
             <div key={catId} className="flex items-center gap-3 text-xs">
-              <span className="w-28 truncate font-medium text-gray-700">{catLabel(catId)}</span>
-              <div className="flex h-4 flex-1 overflow-hidden rounded-full bg-gray-100">
-                {(['native', 'mcp', 'skill'] as const).map((category) => {
+              <span className="w-28 truncate font-medium text-[#5C4A3A]">{catLabel(catId)}</span>
+              <div className="flex h-5 flex-1 overflow-hidden rounded-full bg-[#F5F0EB]">
+                {CATEGORIES.map((category) => {
                   const val = cats[category] ?? 0;
                   if (val === 0) return null;
                   return (
                     <div
                       key={category}
-                      className="h-full"
+                      className="h-full transition-all"
                       style={{
                         width: `${(val / catTotal) * 100}%`,
-                        backgroundColor: CATEGORY_COLORS[category],
+                        backgroundColor: CATEGORY_STYLE[category].color,
+                        opacity: 0.75,
                       }}
-                      title={`${CATEGORY_LABELS[category]}: ${val}`}
+                      title={`${CATEGORY_STYLE[category].label}: ${val}`}
                     />
                   );
                 })}
               </div>
-              <span className="w-10 text-right tabular-nums text-gray-500">{catTotal}</span>
+              <span className="w-10 text-right tabular-nums text-[#A08A76]">{catTotal}</span>
             </div>
           );
         })}
