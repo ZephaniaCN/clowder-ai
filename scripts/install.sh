@@ -526,10 +526,14 @@ DISTRO_FAMILY=""; DISTRO_NAME=""; PKG_INSTALL=""; PKG_UPDATE=""
 case "$PLATFORM" in
     Darwin)
         DISTRO_FAMILY="darwin"; DISTRO_NAME="macOS"
+        # Detect existing Homebrew even when PATH is not initialized (non-login shells)
+        if ! command -v brew &>/dev/null; then
+            [[ -x /opt/homebrew/bin/brew ]] && eval "$(/opt/homebrew/bin/brew shellenv)"
+            [[ -x /usr/local/bin/brew ]] && eval "$(/usr/local/bin/brew shellenv)"
+        fi
         if ! command -v brew &>/dev/null; then
             info "  Homebrew not found — installing..."
             NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" </dev/null
-            # Add Homebrew to PATH for Apple Silicon and Intel Macs
             [[ -x /opt/homebrew/bin/brew ]] && eval "$(/opt/homebrew/bin/brew shellenv)"
             [[ -x /usr/local/bin/brew ]] && eval "$(/usr/local/bin/brew shellenv)"
             command -v brew &>/dev/null || { fail "Homebrew install failed. Install manually: https://brew.sh"; exit 1; }
