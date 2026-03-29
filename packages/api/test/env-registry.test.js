@@ -116,9 +116,10 @@ describe('env-registry', () => {
     }
   });
 
-  it('DEFAULT_OWNER_USER_ID is bootstrap-only (not runtime-editable)', () => {
+  it('DEFAULT_OWNER_USER_ID is sensitive + bootstrap-only (not runtime-editable, not visible)', () => {
     const def = ENV_VARS.find((v) => v.name === 'DEFAULT_OWNER_USER_ID');
     assert.ok(def, 'DEFAULT_OWNER_USER_ID should be in registry');
+    assert.equal(def.sensitive, true, 'should be sensitive (value masked in summary)');
     assert.equal(def.runtimeEditable, false, 'should be explicitly marked runtimeEditable: false');
     assert.equal(isEditableEnvVar(def), false, 'isEditableEnvVar should return false');
     assert.equal(isEditableEnvVarName('DEFAULT_OWNER_USER_ID'), false, 'isEditableEnvVarName should return false');
@@ -446,6 +447,43 @@ describe('PATCH /api/config/env (route)', () => {
       // Audit must NOT contain the value
       assert.equal(sensitiveEvent.data.value, undefined);
       assert.equal(sensitiveEvent.data.values, undefined);
+    } finally {
+      await app.close();
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects sensitive writes when DEFAULT_OWNER_USER_ID is unconfigured (no default-user fallback)', async () => {
+    const { configRoutes } = await import('../dist/routes/config.js');
+    const tempRoot = mkdtempSync(resolve(tmpdir(), 'cat-cafe-env-'));
+    const envFilePath = resolve(tempRoot, '.env');
+    writeFileSync(envFilePath, 'OPENAI_API_KEY=sk-old\n', 'utf8');
+    // Ensure owner ID is NOT set — simulates fresh install
+    delete process.env.DEFAULT_OWNER_USER_ID;
+
+    const app = Fastify({ logger: false });
+    try {
+      await configRoutes(app, {
+        projectRoot: tempRoot,
+        envFilePath,
+        auditLog: { append: async () => {} },
+      });
+      await app.ready();
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/api/config/env',
+        headers: { 'x-cat-cafe-user': 'default-user' },
+        payload: {
+          updates: [{ name: 'OPENAI_API_KEY', value: 'sk-attacker' }],
+        },
+      });
+
+      assert.equal(res.statusCode, 403);
+      const body = JSON.parse(res.payload);
+      assert.match(body.error, /DEFAULT_OWNER_USER_ID/);
+      // Verify env was NOT modified
+      assert.equal(readFileSync(envFilePath, 'utf8'), 'OPENAI_API_KEY=sk-old\n');
     } finally {
       await app.close();
       rmSync(tempRoot, { recursive: true, force: true });

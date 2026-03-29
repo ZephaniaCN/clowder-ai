@@ -142,7 +142,7 @@ export const ENV_VARS: EnvDefinition[] = [
     defaultValue: '(未设置)',
     description: '默认所有者用户 ID',
     category: 'server',
-    sensitive: false,
+    sensitive: true,
     runtimeEditable: false,
   },
   {

@@ -276,9 +276,13 @@ export async function configRoutes(app: FastifyInstance, opts: ConfigRoutesOptio
       updates.set(update.name, update.value);
     }
 
-    // Owner-only gate: sensitive env writes require the co-creator / owner identity
+    // Owner-only gate: sensitive env writes require explicitly configured owner identity
     if (sensitiveKeys.length > 0) {
-      const ownerId = process.env.DEFAULT_OWNER_USER_ID || 'default-user';
+      const ownerId = process.env.DEFAULT_OWNER_USER_ID;
+      if (!ownerId || ownerId === '(未设置)') {
+        reply.status(403);
+        return { error: 'Sensitive env writes require DEFAULT_OWNER_USER_ID to be configured in .env' };
+      }
       if (operator !== ownerId) {
         reply.status(403);
         return { error: 'Sensitive env vars can only be updated by the owner' };
