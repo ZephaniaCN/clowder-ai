@@ -162,6 +162,7 @@ function SummaryCards({ total, byCategory }: { total: number; byCategory: Record
 function DailyTrend({ daily }: { daily: ToolUsageReport['daily'] }) {
   if (daily.length === 0) return null;
   const maxDay = Math.max(...daily.map((d) => d.native + d.mcp + d.skill), 1);
+  // API returns dates descending; reverse to show oldest→newest top→bottom
   const sorted = [...daily].reverse();
 
   return (

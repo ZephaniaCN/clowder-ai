@@ -836,15 +836,21 @@ async function main(): Promise<void> {
     const runSweep = async () => {
       try {
         const archivedDates = await toolUsageArchiver.getArchivedDates();
-        // Archive days 85–89 ago (buffer before 90-day TTL expiry)
+        // Collect target dates (85–89 days ago, buffer before 90-day TTL expiry)
         const now = new Date();
-        let archived = 0;
+        const targetDates = new Set<string>();
         for (let offset = 85; offset <= 89; offset++) {
           const d = new Date(now);
           d.setDate(d.getDate() - offset);
           const dateStr = d.toISOString().slice(0, 10);
-          if (archivedDates.has(dateStr)) continue;
-          const entries = await toolUsageCounter.archiveDate(dateStr);
+          if (!archivedDates.has(dateStr)) targetDates.add(dateStr);
+        }
+        if (targetDates.size === 0) return;
+        // Single SCAN for all dates, then filter client-side
+        const allEntries = await toolUsageCounter.fetchAllEntries();
+        let archived = 0;
+        for (const date of targetDates) {
+          const entries = allEntries.filter((e) => e.date === date);
           if (entries.length > 0) {
             archived += await toolUsageArchiver.archiveEntries(entries);
           }

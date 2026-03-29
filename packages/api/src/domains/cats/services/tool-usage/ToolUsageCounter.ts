@@ -213,12 +213,11 @@ export class ToolUsageCounter {
   }
 
   /**
-   * Archive entries for a specific date (call before TTL expires).
-   * Returns the entries that were archived.
+   * Fetch all current Redis entries (for bulk archive operations).
+   * Caller filters by date to avoid per-date full SCANs.
    */
-  async archiveDate(date: string): Promise<ToolUsageEntry[]> {
-    const all = await this.scanAll();
-    return all.filter((e) => e.date === date);
+  async fetchAllEntries(): Promise<ToolUsageEntry[]> {
+    return this.scanAll();
   }
 }
 
