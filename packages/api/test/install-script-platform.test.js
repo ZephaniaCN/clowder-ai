@@ -46,6 +46,20 @@ test('install script installs Xcode CLT on macOS when missing', () => {
   assert.match(installScriptText, /xcode-select/);
 });
 
+test('darwin xcode CLT wait uses long non-fatal timeout', () => {
+  assert.match(installScriptText, /_xcode_timeout=1800/, 'must wait up to 30 minutes before timing out');
+  assert.match(
+    installScriptText,
+    /warn "Xcode CLT not ready after 30 min/,
+    'timeout should warn and continue, not hard-exit',
+  );
+  assert.doesNotMatch(
+    installScriptText,
+    /Xcode CLT install timed out.*exit 1/s,
+    'must not hard-fail installer on CLT timeout',
+  );
+});
+
 test('resolve_realpath works on this platform', () => {
   const output = runSourceOnlySnippet(`
 printf '%s' "$(resolve_realpath /tmp)"

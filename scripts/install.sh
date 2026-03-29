@@ -600,19 +600,24 @@ if [[ "$DISTRO_FAMILY" == "darwin" ]]; then
     if ! xcode-select -p &>/dev/null; then
         warn "Xcode Command Line Tools not found — installing..."
         xcode-select --install 2>/dev/null || true
-        # Wait for the installer to finish (user-interactive on macOS)
-        # P2 review: add 5-minute timeout to avoid infinite hang if user
-        # cancels the installer or the install fails silently.
+        # Wait for the installer to finish (user-interactive on macOS).
+        # Use a long, non-fatal timeout: CLT install can legitimately take
+        # longer on slow networks or first-time setups.
         _xcode_wait=0
+        _xcode_timeout=1800
         until xcode-select -p &>/dev/null; do
             sleep 5; _xcode_wait=$((_xcode_wait + 5))
-            if [[ $_xcode_wait -ge 300 ]]; then
-                fail "Xcode CLT install timed out (5 min). Run manually: xcode-select --install"
-                exit 1
+            if [[ $_xcode_wait -ge $_xcode_timeout ]]; then
+                warn "Xcode CLT not ready after 30 min. Continuing setup; run again after CLT finishes if build tools are missing."
+                break
             fi
         done
-        unset _xcode_wait
-        ok "Xcode Command Line Tools installed"
+        if xcode-select -p &>/dev/null; then
+            ok "Xcode Command Line Tools installed"
+        else
+            warn "Xcode Command Line Tools still not ready. You may need: xcode-select --install"
+        fi
+        unset _xcode_wait _xcode_timeout
     else ok "Xcode Command Line Tools present"
     fi
 else
