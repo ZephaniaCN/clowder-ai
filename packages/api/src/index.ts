@@ -833,13 +833,17 @@ async function main(): Promise<void> {
   // F142: Daily archive sweep — persist expiring Redis counters to JSONL
   if (toolUsageCounter && toolUsageArchiver) {
     const sweepLog = (await import('./infrastructure/logger.js')).createModuleLogger('tool-usage-sweep');
+    let sweepInFlight = false;
     const runSweep = async () => {
+      if (sweepInFlight) return;
+      sweepInFlight = true;
       try {
         const archivedDates = await toolUsageArchiver.getArchivedDates();
-        // Collect target dates (85–89 days ago, buffer before 90-day TTL expiry)
+        // Catch-up: archive ALL unarchived dates older than 7 days (not just 85-89).
+        // Covers downtime gaps — any date still in Redis but not yet archived gets saved.
         const now = new Date();
         const targetDates = new Set<string>();
-        for (let offset = 85; offset <= 89; offset++) {
+        for (let offset = 7; offset <= 89; offset++) {
           const d = new Date(now);
           d.setDate(d.getDate() - offset);
           const dateStr = d.toISOString().slice(0, 10);
@@ -858,6 +862,8 @@ async function main(): Promise<void> {
         if (archived > 0) sweepLog.info({ archived }, 'Tool usage archive sweep completed');
       } catch (err) {
         sweepLog.warn({ err }, 'Tool usage archive sweep failed');
+      } finally {
+        sweepInFlight = false;
       }
     };
     // First sweep 30s after startup, then daily

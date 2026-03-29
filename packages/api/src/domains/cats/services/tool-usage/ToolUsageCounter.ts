@@ -83,12 +83,14 @@ export class ToolUsageCounter {
     // Redis always scanned (up to 90 days of hot data)
     const redisEntries = allTime ? await this.scanAll() : await this.scanDays(days);
 
-    // For all-time, also load archived data (excluding dates already in Redis)
+    // For all-time, merge Redis (authoritative) + archive at entry-level granularity.
+    // Same-day keys can expire at different times, so date-level dedup would lose data.
     let entries: ToolUsageEntry[];
     if (allTime && this.archiver) {
-      const redisDates = new Set(redisEntries.map((e) => e.date));
-      const archived = await this.archiver.loadArchive(redisDates);
-      entries = [...archived, ...redisEntries];
+      const redisKeys = new Set(redisEntries.map((e) => `${e.date}:${e.catId}:${e.category}:${e.toolName}`));
+      const archived = await this.archiver.loadArchive();
+      const deduped = archived.filter((e) => !redisKeys.has(`${e.date}:${e.catId}:${e.category}:${e.toolName}`));
+      entries = [...deduped, ...redisEntries];
     } else {
       entries = redisEntries;
     }

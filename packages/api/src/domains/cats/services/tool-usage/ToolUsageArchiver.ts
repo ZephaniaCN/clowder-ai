@@ -29,17 +29,15 @@ export class ToolUsageArchiver {
     return entries.length;
   }
 
-  /** Load all archived entries, optionally filtering by date set. */
-  async loadArchive(excludeDates?: Set<string>): Promise<ToolUsageEntry[]> {
+  /** Load all archived entries. Caller handles dedup against Redis. */
+  async loadArchive(): Promise<ToolUsageEntry[]> {
     if (!existsSync(this.archivePath)) return [];
     const content = await readFile(this.archivePath, 'utf-8');
     const entries: ToolUsageEntry[] = [];
     for (const line of content.split('\n')) {
       if (!line.trim()) continue;
       try {
-        const entry = JSON.parse(line) as ToolUsageEntry;
-        if (excludeDates && excludeDates.has(entry.date)) continue;
-        entries.push(entry);
+        entries.push(JSON.parse(line) as ToolUsageEntry);
       } catch {
         log.warn({ line: line.slice(0, 80) }, 'Skipped malformed archive line');
       }
