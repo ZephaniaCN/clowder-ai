@@ -135,6 +135,7 @@ function sanitizeArg(val: unknown, seen?: WeakSet<object>): unknown {
   if (visited.has(val as object)) return '[Circular]';
   visited.add(val as object);
   if (Array.isArray(val)) return val.map((v) => sanitizeArg(v, visited));
+  if (ArrayBuffer.isView(val)) return val;
   if (val instanceof Error) {
     const cleaned: Record<string, unknown> = { name: val.name, message: val.message, stack: val.stack };
     try {
