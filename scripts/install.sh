@@ -819,17 +819,30 @@ install_npm_cli() {
     local name="$1" cmd="$2" pkg="$3"; info "  Installing $name ($pkg)..."; npm_global_install "$pkg" 2>&1; hash -r 2>/dev/null || true
     command -v "$cmd" &>/dev/null || { fail "$name install failed. Try: npm install -g $pkg"; exit 1; }; ok "$name installed"
 }
+install_brew_cli() {
+    local name="$1" cmd="$2" formula="$3"
+    info "  Installing $name via Homebrew ($formula)..."
+    brew install "$formula" 2>&1
+    hash -r 2>/dev/null || true
+    command -v "$cmd" &>/dev/null || { fail "$name install failed. Try: brew install $formula"; exit 1; }; ok "$name installed"
+}
 install_claude_cli() {
     info "  Installing Claude Code..."
-    # Download the installer to a temp file first, then run it.
-    # Running `curl ... | bash </dev/null` breaks the pipe because bash's stdin
-    # becomes the pipe from curl. A temp file avoids the stdin conflict.
-    local tmp_installer; tmp_installer="$(mktemp)"
-    curl -fsSL https://claude.ai/install.sh -o "$tmp_installer" 2>&1
-    bash "$tmp_installer" </dev/null 2>&1
-    rm -f "$tmp_installer"
-    export PATH="$HOME/.local/bin:$HOME/.claude/bin:$PATH"; hash -r 2>/dev/null || true
-    command -v claude &>/dev/null || { fail "Claude install failed. Try: curl -fsSL https://claude.ai/install.sh | bash"; exit 1; }; ok "Claude Code installed"
+    if [[ "$DISTRO_FAMILY" == "darwin" ]]; then
+        # macOS: use Homebrew — claude.ai/install.sh is region-blocked in some countries
+        install_brew_cli "Claude Code" "claude" "claude"
+    else
+        # Linux: use npm — Homebrew is not available on most Linux servers
+        install_npm_cli "Claude Code" "claude" "@anthropic-ai/claude-code"
+    fi
+}
+install_codex_cli() {
+    info "  Installing Codex CLI..."
+    if [[ "$DISTRO_FAMILY" == "darwin" ]]; then
+        install_brew_cli "Codex CLI" "codex" "codex"
+    else
+        install_npm_cli "Codex CLI" "codex" "@openai/codex"
+    fi
 }
 # Detect missing CLIs
 MISSING_AGENTS=()
@@ -858,7 +871,7 @@ if [[ ${#MISSING_AGENTS[@]} -gt 0 ]]; then
     for agent in "${INSTALL_AGENTS[@]}"; do
         case "$agent" in
             claude) install_claude_cli ;;
-            codex)  install_npm_cli "Codex CLI" "codex" "@openai/codex" ;;
+            codex)  install_codex_cli ;;
             gemini) install_npm_cli "Gemini CLI" "gemini" "@google/gemini-cli" ;;
         esac
     done

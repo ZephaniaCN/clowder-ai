@@ -166,6 +166,45 @@ fi
   assert.match(output, /^OK:skipped/, '_keg_bin must be empty when brew --prefix fails — must NOT degrade to /bin');
 });
 
+// ── CLI install method tests ────────────────────────────
+
+test('darwin: Claude and Codex installed via brew, not curl/npm', () => {
+  // On macOS, Claude and Codex must use Homebrew to avoid region-blocked URLs
+  assert.match(installScriptText, /install_brew_cli/, 'must define install_brew_cli helper');
+  assert.match(
+    installScriptText,
+    /DISTRO_FAMILY.*==.*darwin[\s\S]*?install_brew_cli.*Claude/s,
+    'Claude must use brew on macOS',
+  );
+  assert.match(
+    installScriptText,
+    /DISTRO_FAMILY.*==.*darwin[\s\S]*?install_brew_cli.*Codex/s,
+    'Codex must use brew on macOS',
+  );
+});
+
+test('linux: Claude installed via npm, not curl claude.ai', () => {
+  // claude.ai/install.sh is region-blocked — use npm as universal fallback
+  assert.doesNotMatch(
+    installScriptText,
+    /curl.*claude\.ai\/install\.sh/,
+    'must NOT use curl claude.ai/install.sh (region-blocked in some countries)',
+  );
+  assert.match(
+    installScriptText,
+    /@anthropic-ai\/claude-code/,
+    'Linux Claude install must use npm package @anthropic-ai/claude-code',
+  );
+});
+
+test('Gemini always installed via npm (no brew formula)', () => {
+  assert.match(
+    installScriptText,
+    /gemini\).*install_npm_cli.*Gemini/s,
+    'Gemini must always use npm install',
+  );
+});
+
 test('darwin redis install does not ping-gate after install', () => {
   // install_redis_local must NOT check redis-cli ping — install success
   // is determined by the package manager exit code, not by whether the
