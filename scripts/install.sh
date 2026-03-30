@@ -773,12 +773,6 @@ install_redis_local() {
         $SUDO systemctl start redis-server 2>/dev/null || $SUDO systemctl start redis 2>/dev/null || true
     fi
     ok "Redis installed"
-    # Best-effort ping — startup may lag; don't block the installer
-    if ! redis-cli ping &>/dev/null 2>&1; then
-        warn "Redis not responding to ping yet — it may need a moment to start"
-    else
-        ok "Redis responding to ping"
-    fi
 }
 start_redis_if_stopped() {
     if [[ "$DISTRO_FAMILY" == "darwin" ]]; then
