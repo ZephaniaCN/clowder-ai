@@ -227,3 +227,61 @@ test('darwin redis install reports brew install failure instead of swallowing', 
   );
   assert.match(installScriptText, /fail "brew install redis failed"/, 'must report brew install failure explicitly');
 });
+
+test('darwin brew detection uses arch-aware candidate order, not both', () => {
+  // Must NOT eval both /opt/homebrew and /usr/local shellenv sequentially (#174 P2)
+  assert.match(
+    installScriptText,
+    /uname -m.*arm64/s,
+    'must use uname -m to detect architecture for brew path selection',
+  );
+  assert.match(
+    installScriptText,
+    /_brew_candidates=/,
+    'must use a candidates array for deterministic single-brew selection',
+  );
+  // Ensure we break after the first match, not eval both
+  assert.match(
+    installScriptText,
+    /eval.*\$_brew.*shellenv[\s\S]*?_brew_recovered=true[\s\S]*?break/,
+    'must break after first successful brew shellenv eval',
+  );
+});
+
+test('darwin brew shellenv persisted to login profile after recovery', () => {
+  // #174 P2: new terminals must find brew without manual PATH setup
+  assert.match(
+    installScriptText,
+    /_brew_recovered.*==.*true/,
+    'must track whether brew was recovered/installed to decide persistence',
+  );
+  assert.match(
+    installScriptText,
+    /brew.*shellenv.*Homebrew.*added by Clowder AI/,
+    'must persist brew shellenv eval line with attribution comment',
+  );
+});
+
+test('darwin PATH persistence covers both zsh and bash profiles', () => {
+  // #174 P2: bash users must also get PATH additions
+  assert.match(
+    installScriptText,
+    /darwin_login_profiles\(\)/,
+    'must define darwin_login_profiles helper',
+  );
+  assert.match(
+    installScriptText,
+    /\.zprofile/,
+    'darwin_login_profiles must include zsh profile',
+  );
+  assert.match(
+    installScriptText,
+    /\.bash_profile/,
+    'darwin_login_profiles must include bash profile',
+  );
+  assert.match(
+    installScriptText,
+    /\.profile/,
+    'darwin_login_profiles must fall back to ~/.profile when ~/.bash_profile missing',
+  );
+});

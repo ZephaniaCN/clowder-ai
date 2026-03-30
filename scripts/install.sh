@@ -54,6 +54,16 @@ append_to_profile() {
     if [[ -f "$profile" ]] && grep -qF "$line" "$profile" 2>/dev/null; then return 0; fi
     echo "$line" >> "$profile"
 }
+# Return macOS login profile paths for both zsh and bash.
+# zsh: ~/.zprofile (respects ZDOTDIR). bash: ~/.bash_profile or ~/.profile.
+darwin_login_profiles() {
+    echo "${ZDOTDIR:-$HOME}/.zprofile"
+    if [[ -f "$HOME/.bash_profile" ]]; then
+        echo "$HOME/.bash_profile"
+    else
+        echo "$HOME/.profile"
+    fi
+}
 
 # TTY-safe read + pnpm install with registry fallback
 # Verify /dev/tty is both readable AND writable (prompts write to it too).
@@ -533,19 +543,45 @@ DISTRO_FAMILY=""; DISTRO_NAME=""; PKG_INSTALL=""; PKG_UPDATE=""
 case "$PLATFORM" in
     Darwin)
         DISTRO_FAMILY="darwin"; DISTRO_NAME="macOS"
-        # Detect existing Homebrew even when PATH is not initialized (non-login shells)
+        # Detect existing Homebrew even when PATH is not initialized (non-login shells).
+        # Pick the arch-native prefix first to avoid ARM/x86 conflicts on dual-Homebrew machines.
+        if [[ "$(uname -m)" == "arm64" ]]; then
+            _brew_candidates=(/opt/homebrew/bin/brew /usr/local/bin/brew)
+        else
+            _brew_candidates=(/usr/local/bin/brew /opt/homebrew/bin/brew)
+        fi
+        _brew_recovered=false
         if ! command -v brew &>/dev/null; then
-            [[ -x /opt/homebrew/bin/brew ]] && eval "$(/opt/homebrew/bin/brew shellenv)"
-            [[ -x /usr/local/bin/brew ]] && eval "$(/usr/local/bin/brew shellenv)"
+            for _brew in "${_brew_candidates[@]}"; do
+                if [[ -x "$_brew" ]]; then
+                    eval "$("$_brew" shellenv)"
+                    _brew_recovered=true
+                    break
+                fi
+            done
         fi
         if ! command -v brew &>/dev/null; then
             info "  Homebrew not found — installing..."
             info "  (Homebrew may ask for your macOS password — that's normal, don't re-run with sudo)"
             NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" </dev/null
-            [[ -x /opt/homebrew/bin/brew ]] && eval "$(/opt/homebrew/bin/brew shellenv)"
-            [[ -x /usr/local/bin/brew ]] && eval "$(/usr/local/bin/brew shellenv)"
+            for _brew in "${_brew_candidates[@]}"; do
+                if [[ -x "$_brew" ]]; then
+                    eval "$("$_brew" shellenv)"
+                    break
+                fi
+            done
             command -v brew &>/dev/null || { fail "Homebrew install failed. Install manually: https://brew.sh"; exit 1; }
+            _brew_recovered=true
         fi
+        # Persist brew shellenv to login profiles so new terminals find brew, node, etc.
+        if [[ "$_brew_recovered" == true ]]; then
+            _shellenv_line="eval \"\$($(command -v brew) shellenv)\"  # Homebrew (added by Clowder AI)"
+            for _prof in $(darwin_login_profiles); do
+                append_to_profile "$_shellenv_line" "$_prof"
+            done
+            unset _shellenv_line
+        fi
+        unset _brew_candidates _brew _brew_recovered
         PKG_INSTALL="brew install"; PKG_UPDATE="brew update"
         ;;
     Linux)
@@ -695,11 +731,13 @@ if node_needs_install; then
                 _keg_bin="${_keg_prefix:+$_keg_prefix/bin}"
                 if [[ -n "$_keg_bin" && -d "$_keg_bin" ]]; then
                     export PATH="$_keg_bin:$PATH"
-                    _profile="${ZDOTDIR:-$HOME}/.zprofile"
-                    append_to_profile "export PATH=\"$_keg_bin:\$PATH\"  # Homebrew node@20 keg" "$_profile"
-                    ok "Node keg PATH added to $_profile"
+                    _keg_line="export PATH=\"$_keg_bin:\$PATH\"  # Homebrew node@20 keg"
+                    for _prof in $(darwin_login_profiles); do
+                        append_to_profile "$_keg_line" "$_prof"
+                    done
+                    ok "Node keg PATH persisted to login profiles"
                 fi
-                unset _keg_prefix _keg_bin _profile
+                unset _keg_prefix _keg_bin _keg_line _prof
                 node_needs_install || NODE_OK=true
             fi
             ;;
@@ -722,16 +760,19 @@ if node_needs_install; then
     esac
     node_needs_install && NODE_OK=false
     [[ "$NODE_OK" == false ]] && { fail "Could not install Node.js 20. Install manually: https://nodejs.org"; exit 1; }
-    # P1 review: Persist PATH additions to shell profile for new terminals.
+    # Persist PATH additions to login profiles (zsh + bash) for new terminals.
     if [[ "$DISTRO_FAMILY" == "darwin" ]]; then
-        _profile="${ZDOTDIR:-$HOME}/.zprofile"
-        # ~/.local/bin for persist_user_bin symlinks (fnm, pnpm, etc.)
-        append_to_profile 'export PATH="$HOME/.local/bin:$PATH"  # Clowder AI user binaries' "$_profile"
-        # fnm shell init (only if fnm was used)
-        if [[ "$USED_FNM" == true ]]; then
-            append_to_profile 'eval "$(fnm env --shell zsh 2>/dev/null)" 2>/dev/null || true  # fnm' "$_profile"
-        fi
-        unset _profile
+        for _prof in $(darwin_login_profiles); do
+            # ~/.local/bin for persist_user_bin symlinks (fnm, pnpm, etc.)
+            append_to_profile 'export PATH="$HOME/.local/bin:$PATH"  # Clowder AI user binaries' "$_prof"
+            # fnm shell init (only if fnm was used)
+            if [[ "$USED_FNM" == true ]]; then
+                _fnm_shell="zsh"
+                [[ "$_prof" == *bash* || "$_prof" == *profile ]] && _fnm_shell="bash"
+                append_to_profile "eval \"\$(fnm env --shell $_fnm_shell 2>/dev/null)\" 2>/dev/null || true  # fnm" "$_prof"
+            fi
+        done
+        unset _prof _fnm_shell
     fi
     ok "Node.js $(node -v) installed"
 else
