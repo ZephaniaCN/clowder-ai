@@ -72,6 +72,28 @@ describe('start-dev strict profile isolation', () => {
       assert.match(result.stdout, /TTS=0/);
       assert.match(result.stdout, /LLM=0/);
       assert.match(result.stdout, /EMBED=/);
+      assert.match(result.stdout, /TTL=86400/);
+      assert.match(result.stdout, /REDIS_PROFILE=opensource/);
+    } finally {
+      rmSync(sandboxDir, { recursive: true, force: true });
+    }
+  });
+
+  it('production profile has TTL=0 and shares redis-opensource instance', () => {
+    const sandboxDir = createSandbox();
+    try {
+      const result = runSourceOnly({
+        sandboxDir,
+        env: {
+          CAT_CAFE_STRICT_PROFILE_DEFAULTS: '1',
+        },
+        extraArgs: ['--', '--profile=production'],
+      });
+
+      assert.equal(result.status, 0, result.stderr || result.stdout);
+      assert.match(result.stdout, /PROFILE=production/);
+      assert.match(result.stdout, /ASR=0/);
+      assert.match(result.stdout, /PROXY=0/);
       assert.match(result.stdout, /TTL=0/);
       assert.match(result.stdout, /REDIS_PROFILE=opensource/);
     } finally {
