@@ -71,6 +71,11 @@ resolve_registry() {
     printf '%s' "https://registry.npmjs.org"
 }
 
+# ── normalize_pkg_env: @scope/my-pkg → scope_my_pkg ──────────
+normalize_pkg_env() {
+    printf '%s' "$1" | sed 's/^@//' | tr '/-' '__'
+}
+
 # ── scan_prebuild_packages: find packages using prebuild-install ──
 # Reads pnpm-lock.yaml and outputs package names (one per line)
 scan_prebuild_packages() {
@@ -176,34 +181,59 @@ echo ""
 # ── Check 3: Binary download hosts ───────────────────────────
 pf_info "[3/3] Scanning lockfile for binary download dependencies..."
 
-# prebuild-install packages → GitHub releases
+# prebuild-install packages → check effective binary host per package
+# P1 fix: if npm_config_{pkg}_binary_host is set, test that instead of GitHub
 PREBUILD_PKGS=()
 while IFS= read -r pkg; do
     [[ -n "$pkg" ]] && PREBUILD_PKGS+=("$pkg")
 done < <(scan_prebuild_packages)
 
-GITHUB_CHECKED=false
+GITHUB_NEEDED=()  # "pkg|env_name" entries needing GitHub (no mirror configured)
+
 for pkg in "${PREBUILD_PKGS[@]:-}"; do
     [[ -z "$pkg" ]] && continue
-    if ! $GITHUB_CHECKED; then
+    norm=$(normalize_pkg_env "$pkg")
+    env_name="npm_config_${norm}_binary_host"
+    configured="${!env_name:-}"
+    if [[ -n "$configured" ]]; then
+        # User has a mirror configured — test that instead of GitHub
         TOTAL=$((TOTAL + 1))
-        if test_endpoint "https://github.com"; then
-            pf_ok "GitHub (prebuild: ${PREBUILD_PKGS[*]}) — reachable"
+        host_display=$(printf '%s' "$configured" | sed -E 's|https?://||;s|/.*||')
+        if test_endpoint "$configured"; then
+            pf_ok "$pkg → $host_display (mirror via $env_name)"
             PASSED=$((PASSED + 1))
         else
-            pf_fail "GitHub (prebuild: ${PREBUILD_PKGS[*]}) — UNREACHABLE"
-            # Generate env var suggestions for each package
-            local_fix=""
-            for p in "${PREBUILD_PKGS[@]}"; do
-                env_name="npm_config_$(printf '%s' "$p" | tr '-' '_')_binary_host"
-                [[ -n "$local_fix" ]] && local_fix="${local_fix}\n"
-                local_fix="${local_fix}export ${env_name}=<YOUR_MIRROR_URL>"
-            done
-            FAILURES+=("prebuild|${PREBUILD_PKGS[*]}|$local_fix")
+            pf_fail "$pkg → $host_display (mirror via $env_name) — UNREACHABLE"
+            FAILURES+=("prebuild-mirror|$pkg|Configured $env_name=$configured is unreachable. Check the URL.")
         fi
-        GITHUB_CHECKED=true
+    else
+        GITHUB_NEEDED+=("$pkg|$env_name")
     fi
 done
+
+# Test GitHub once for all packages without configured mirrors
+if [[ ${#GITHUB_NEEDED[@]} -gt 0 ]]; then
+    TOTAL=$((TOTAL + 1))
+    pkg_names=""
+    for entry in "${GITHUB_NEEDED[@]}"; do
+        p="${entry%%|*}"
+        [[ -n "$pkg_names" ]] && pkg_names="$pkg_names, "
+        pkg_names="$pkg_names$p"
+    done
+    if test_endpoint "https://github.com"; then
+        pf_ok "GitHub (prebuild: $pkg_names) — reachable"
+        PASSED=$((PASSED + 1))
+    else
+        pf_fail "GitHub (prebuild: $pkg_names) — UNREACHABLE"
+        local_fix=""
+        for entry in "${GITHUB_NEEDED[@]}"; do
+            IFS='|' read -r p env_name <<< "$entry"
+            [[ -n "$local_fix" ]] && local_fix="${local_fix}\n"
+            local_fix="${local_fix}export ${env_name}=<YOUR_MIRROR_URL>"
+        done
+        FAILURES+=("prebuild|$pkg_names|$local_fix")
+    fi
+fi
 
 # puppeteer → browser CDN
 if has_puppeteer; then
@@ -246,6 +276,10 @@ if $SHOW_FIX; then
                 echo "  Or set the environment variable before running:"
                 echo ""
                 echo "    export npm_config_registry=https://YOUR_NPM_MIRROR/"
+                echo ""
+                ;;
+            prebuild-mirror)
+                echo "  $ffix"
                 echo ""
                 ;;
             prebuild)

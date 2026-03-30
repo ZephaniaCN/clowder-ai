@@ -73,6 +73,12 @@ function Resolve-Registry {
     return "https://registry.npmjs.org"
 }
 
+# ── normalize package name for env var: @scope/my-pkg → scope_my_pkg ──
+function ConvertTo-PkgEnvName {
+    param([string]$Pkg)
+    return ("npm_config_" + ($Pkg -replace '^@', '' -replace '[/-]', '_') + "_binary_host")
+}
+
 # ── scan_prebuild_packages: find packages using prebuild-install ──
 function Get-PrebuildPackages {
     if (-not (Test-Path $Lockfile)) { return @() }
@@ -189,19 +195,44 @@ Write-Host ""
 # ── Check 3: Binary download hosts ───────────────────────────
 Write-PfInfo "[3/3] Scanning lockfile for binary download dependencies..."
 
+# prebuild-install packages — check effective binary host per package
 $prebuildPkgs = Get-PrebuildPackages
-if ($prebuildPkgs.Count -gt 0) {
+$githubNeeded = @()  # packages without configured mirror
+
+foreach ($pkg in $prebuildPkgs) {
+    $envName = ConvertTo-PkgEnvName $pkg
+    $configured = [System.Environment]::GetEnvironmentVariable($envName)
+    if ($configured) {
+        # User has a mirror configured — test that instead of GitHub
+        $total++
+        $hostDisplay = ([System.Uri]$configured).Host
+        if (Test-Endpoint $configured) {
+            Write-PfOk "$pkg -> $hostDisplay (mirror via $envName)"
+            $passed++
+        } else {
+            Write-PfFail "$pkg -> $hostDisplay (mirror via $envName) — UNREACHABLE"
+            $failures += [pscustomobject]@{
+                Type = "prebuild-mirror"; Pkg = $pkg
+                Fix = "Configured $envName=$configured is unreachable. Check the URL."
+            }
+        }
+    } else {
+        $githubNeeded += [pscustomobject]@{ Pkg = $pkg; EnvName = $envName }
+    }
+}
+
+# Test GitHub once for all packages without configured mirrors
+if ($githubNeeded.Count -gt 0) {
     $total++
-    $pkgList = $prebuildPkgs -join ", "
+    $pkgList = ($githubNeeded | ForEach-Object { $_.Pkg }) -join ", "
     if (Test-Endpoint "https://github.com") {
         Write-PfOk "GitHub (prebuild: $pkgList) — reachable"
         $passed++
     } else {
         Write-PfFail "GitHub (prebuild: $pkgList) — UNREACHABLE"
         $envVars = @()
-        foreach ($p in $prebuildPkgs) {
-            $envName = "npm_config_" + ($p -replace '-', '_') + "_binary_host"
-            $envVars += "set ${envName}=<YOUR_MIRROR_URL>"
+        foreach ($entry in $githubNeeded) {
+            $envVars += "`$env:$($entry.EnvName) = `"<YOUR_MIRROR_URL>`""
         }
         $failures += [pscustomobject]@{
             Type = "prebuild"; Pkg = $pkgList; Fix = ($envVars -join "`n")
@@ -209,6 +240,7 @@ if ($prebuildPkgs.Count -gt 0) {
     }
 }
 
+# puppeteer → browser CDN
 if (Test-HasPuppeteer) {
     $puppeteerUrl = Resolve-PuppeteerUrl
     $total++
@@ -220,7 +252,7 @@ if (Test-HasPuppeteer) {
         Write-PfFail "Browser CDN: $puppeteerHost (puppeteer) — UNREACHABLE"
         $failures += [pscustomobject]@{
             Type = "browser"; Pkg = "puppeteer"
-            Fix = "set PUPPETEER_DOWNLOAD_BASE_URL=<YOUR_MIRROR_URL>"
+            Fix = "`$env:PUPPETEER_DOWNLOAD_BASE_URL = `"<YOUR_MIRROR_URL>`""
         }
     }
 }
@@ -247,6 +279,10 @@ if (-not $SkipFix) {
                 Write-Host ""
                 Write-Host '    $env:CAT_CAFE_NPM_REGISTRY = "https://YOUR_NPM_MIRROR/"'
                 Write-Host "    .\scripts\install.ps1"
+                Write-Host ""
+            }
+            "prebuild-mirror" {
+                Write-Host "  $($f.Fix)"
                 Write-Host ""
             }
             "prebuild" {
