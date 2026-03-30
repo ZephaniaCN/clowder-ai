@@ -17,6 +17,7 @@ param(
     [switch]$Start,
     [switch]$SkipBuild,
     [switch]$SkipCli,
+    [switch]$SkipPreflight,
     [switch]$Debug
 )
 
@@ -278,6 +279,26 @@ if (Test-Path $envFile) {
 }
 
 Write-Step "Step 5/9 - Install dependencies and build"
+
+# Preflight network check — warn about unreachable endpoints before pnpm install
+$preflightScript = Join-Path $ProjectRoot "scripts\preflight.ps1"
+if (-not $SkipPreflight -and (Test-Path $preflightScript)) {
+    $pfArgs = @("-Timeout", "3")
+    if ($env:CAT_CAFE_NPM_REGISTRY) { $pfArgs += @("-Registry", $env:CAT_CAFE_NPM_REGISTRY) }
+    $pfResult = & powershell -ExecutionPolicy Bypass -File $preflightScript @pfArgs 2>&1
+    $pfResult | ForEach-Object { Write-Host $_ }
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warn "Preflight detected unreachable endpoints (see above)."
+        Write-Warn "Install may fail. Fix the issues above or use -SkipPreflight to bypass."
+        if ([Environment]::UserInteractive -and -not $env:CI) {
+            $continue = Read-Host "  Continue anyway? [y/N]"
+            if ($continue -notmatch '^[Yy]') { Write-Err "Aborted by user"; exit 1 }
+        } else {
+            Write-Err "Non-interactive mode - aborting. Use -SkipPreflight to force."
+            exit 1
+        }
+    }
+}
 
 Write-Host "  Running pnpm install..."
 $frozenInstallOk = $false
