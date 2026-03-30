@@ -760,9 +760,9 @@ install_redis_local() {
             if ! brew install redis 2>/dev/null; then
                 fail "brew install redis failed"; return 1
             fi
+            # Start is best-effort — install is what matters
             if ! brew services start redis 2>/dev/null; then
-                warn "brew services start redis failed — trying direct launch"
-                redis-server --daemonize yes 2>/dev/null || { fail "Could not start Redis"; return 1; }
+                warn "brew services start redis failed — you can start it later with: brew services start redis"
             fi
             ;;
         debian) $SUDO $PKG_INSTALL redis-server ;;
@@ -772,11 +772,13 @@ install_redis_local() {
         $SUDO systemctl enable redis-server 2>/dev/null || $SUDO systemctl enable redis 2>/dev/null || true
         $SUDO systemctl start redis-server 2>/dev/null || $SUDO systemctl start redis 2>/dev/null || true
     fi
-    # Verify Redis is actually responding before claiming success
+    ok "Redis installed"
+    # Best-effort ping — startup may lag; don't block the installer
     if ! redis-cli ping &>/dev/null 2>&1; then
-        fail "Redis installed but not responding to ping"; return 1
+        warn "Redis not responding to ping yet — it may need a moment to start"
+    else
+        ok "Redis responding to ping"
     fi
-    ok "Redis installed and started"
 }
 start_redis_if_stopped() {
     if [[ "$DISTRO_FAMILY" == "darwin" ]]; then

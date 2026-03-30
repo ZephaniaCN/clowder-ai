@@ -166,15 +166,20 @@ fi
   assert.match(output, /^OK:skipped/, '_keg_bin must be empty when brew --prefix fails — must NOT degrade to /bin');
 });
 
-test('darwin redis install verifies redis-cli ping, not just brew exit code', () => {
-  // The install_redis_local function must verify Redis is actually responding
-  assert.match(installScriptText, /redis-cli ping/, 'must verify Redis responds to ping after install');
+test('darwin redis install checks ping but does not block on failure', () => {
+  // Install must check Redis ping, but only warn (not fail/exit) if it's not ready yet
+  assert.match(installScriptText, /redis-cli ping/, 'must check Redis responds to ping after install');
   assert.match(
     installScriptText,
-    /fail "Redis installed but not responding to ping"/,
-    'must report failure when Redis is installed but not responding',
+    /warn "Redis not responding to ping yet/,
+    'ping failure must be a warning, not a hard failure',
   );
-  assert.match(installScriptText, /return 1/, 'must return non-zero on Redis verification failure');
+  // Must NOT hard-fail the installer on ping failure
+  assert.doesNotMatch(
+    installScriptText,
+    /fail "Redis installed but not responding to ping"/,
+    'must not use fail for ping check — install should succeed even if Redis is slow to start',
+  );
 });
 
 test('darwin redis install reports brew install failure instead of swallowing', () => {
