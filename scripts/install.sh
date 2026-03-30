@@ -819,18 +819,19 @@ install_npm_cli() {
     local name="$1" cmd="$2" pkg="$3"; info "  Installing $name ($pkg)..."; npm_global_install "$pkg" 2>&1; hash -r 2>/dev/null || true
     command -v "$cmd" &>/dev/null || { fail "$name install failed. Try: npm install -g $pkg"; exit 1; }; ok "$name installed"
 }
-install_brew_cli() {
-    local name="$1" cmd="$2" formula="$3"
-    info "  Installing $name via Homebrew ($formula)..."
-    brew install "$formula" 2>&1
+install_brew_cask() {
+    local name="$1" cmd="$2" cask="$3"
+    info "  Installing $name via Homebrew cask ($cask)..."
+    brew install --cask "$cask" 2>&1
     hash -r 2>/dev/null || true
-    command -v "$cmd" &>/dev/null || { fail "$name install failed. Try: brew install $formula"; exit 1; }; ok "$name installed"
+    command -v "$cmd" &>/dev/null || { fail "$name install failed. Try: brew install --cask $cask"; exit 1; }; ok "$name installed"
 }
 install_claude_cli() {
     info "  Installing Claude Code..."
     if [[ "$DISTRO_FAMILY" == "darwin" ]]; then
-        # macOS: use Homebrew — claude.ai/install.sh is region-blocked in some countries
-        install_brew_cli "Claude Code" "claude" "claude"
+        # macOS: brew cask — "claude-code" is the CLI, "claude" is the desktop app
+        # claude.ai/install.sh is region-blocked in some countries
+        install_brew_cask "Claude Code" "claude" "claude-code"
     else
         # Linux: use npm — Homebrew is not available on most Linux servers
         install_npm_cli "Claude Code" "claude" "@anthropic-ai/claude-code"
@@ -839,7 +840,7 @@ install_claude_cli() {
 install_codex_cli() {
     info "  Installing Codex CLI..."
     if [[ "$DISTRO_FAMILY" == "darwin" ]]; then
-        install_brew_cli "Codex CLI" "codex" "codex"
+        install_brew_cask "Codex CLI" "codex" "codex"
     else
         install_npm_cli "Codex CLI" "codex" "@openai/codex"
     fi

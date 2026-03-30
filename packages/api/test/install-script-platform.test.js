@@ -168,18 +168,20 @@ fi
 
 // ── CLI install method tests ────────────────────────────
 
-test('darwin: Claude and Codex installed via brew, not curl/npm', () => {
-  // On macOS, Claude and Codex must use Homebrew to avoid region-blocked URLs
-  assert.match(installScriptText, /install_brew_cli/, 'must define install_brew_cli helper');
+test('darwin: Claude and Codex installed via brew cask, not curl/npm', () => {
+  // On macOS, Claude and Codex must use Homebrew cask to avoid region-blocked URLs
+  // "claude-code" is the CLI cask; "claude" is the desktop app (wrong target)
+  assert.match(installScriptText, /install_brew_cask/, 'must define install_brew_cask helper');
+  assert.match(installScriptText, /brew install --cask/, 'must use --cask flag');
   assert.match(
     installScriptText,
-    /DISTRO_FAMILY.*==.*darwin[\s\S]*?install_brew_cli.*Claude/s,
-    'Claude must use brew on macOS',
+    /install_brew_cask "Claude Code" "claude" "claude-code"/,
+    'Claude CLI must install cask "claude-code", not "claude" (desktop app)',
   );
   assert.match(
     installScriptText,
-    /DISTRO_FAMILY.*==.*darwin[\s\S]*?install_brew_cli.*Codex/s,
-    'Codex must use brew on macOS',
+    /install_brew_cask "Codex CLI" "codex" "codex"/,
+    'Codex CLI must install cask "codex"',
   );
 });
 
