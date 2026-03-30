@@ -3,8 +3,8 @@
 # Cat Cafe 启动脚本（底层实现）
 # 用户入口:
 #   pnpm start                        — runtime worktree 稳定启动（由 runtime-worktree.sh 注入 --prod-web）
-#   pnpm start:direct                 — 当前目录稳定启动（package.json 注入 --prod-web + --profile=opensource + 非 watch API + 优先当前 .env 端口）
-#   pnpm dev:direct                   — 当前目录开发模式 (next dev + 热重载，package.json 注入 --profile=opensource)
+#   pnpm start:direct                 — 当前目录稳定启动（package.json 注入 --prod-web + --profile=production + 非 watch API + 优先当前 .env 端口）
+#   pnpm dev:direct                   — 当前目录开发模式 (next dev + 热重载，package.json 注入 --profile=dev)
 #
 # 直接调用脚本:
 #   ./scripts/start-dev.sh            — 开发模式 (next dev + Redis 持久化)
