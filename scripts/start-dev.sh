@@ -22,7 +22,7 @@
 #
 # Profile 说明:
 #   dev        — proxy ON, ASR/TTS/LLM ON, TTL=永久, redis-dev
-#   opensource — proxy OFF, ASR/TTS/LLM OFF, TTL=86400s, redis-opensource
+#   opensource — proxy OFF, ASR/TTS/LLM OFF, TTL=永久, redis-opensource
 #   (无)       — 保持原有行为（各项 ENABLED 默认 0）
 #
 # .env 中的显式值覆盖 profile 默认值。启动摘要标注每个值的来源。
@@ -212,10 +212,10 @@ apply_profile_defaults() {
             _PROF_ASR_ENABLED=0
             _PROF_TTS_ENABLED=0
             _PROF_LLM_POSTPROCESS_ENABLED=0
-            _PROF_MESSAGE_TTL_SECONDS=86400
-            _PROF_THREAD_TTL_SECONDS=86400
-            _PROF_TASK_TTL_SECONDS=86400
-            _PROF_SUMMARY_TTL_SECONDS=86400
+            _PROF_MESSAGE_TTL_SECONDS=0
+            _PROF_THREAD_TTL_SECONDS=0
+            _PROF_TASK_TTL_SECONDS=0
+            _PROF_SUMMARY_TTL_SECONDS=0
             _PROF_REDIS_PROFILE=opensource
             ;;
         "")
