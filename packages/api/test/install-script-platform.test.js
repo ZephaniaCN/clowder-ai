@@ -23,6 +23,14 @@ test('install script does not require sudo on macOS', () => {
   assert.match(installScriptText, /DISTRO_FAMILY.*!=.*darwin.*EUID/s);
 });
 
+test('install script rejects root on macOS with early guard', () => {
+  assert.match(
+    installScriptText,
+    /PLATFORM.*==.*Darwin.*EUID.*-eq.*0.*exit 1/s,
+    'must fail early when run as root on macOS, before reaching Homebrew',
+  );
+});
+
 test('install script uses brew services for Redis on macOS', () => {
   assert.match(installScriptText, /brew services start redis/);
 });

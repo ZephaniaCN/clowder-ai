@@ -522,6 +522,13 @@ fi
 
 # ── [1/9] Environment detection ────────────────────────────
 step "[1/9] Detecting environment / 环境检测..."
+# macOS: Homebrew refuses to run as root — fail early with a clear message
+# so users don't sudo the whole script after seeing Homebrew's sudo prompt.
+if [[ "$PLATFORM" == "Darwin" && $EUID -eq 0 ]]; then
+    fail "macOS 下不要用 sudo 运行 install.sh，直接 bash scripts/install.sh 即可"
+    fail "Don't run install.sh as root on macOS — just: bash scripts/install.sh"
+    exit 1
+fi
 DISTRO_FAMILY=""; DISTRO_NAME=""; PKG_INSTALL=""; PKG_UPDATE=""
 case "$PLATFORM" in
     Darwin)
@@ -533,6 +540,7 @@ case "$PLATFORM" in
         fi
         if ! command -v brew &>/dev/null; then
             info "  Homebrew not found — installing..."
+            info "  (Homebrew may ask for your macOS password — that's normal, don't re-run with sudo)"
             NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" </dev/null
             [[ -x /opt/homebrew/bin/brew ]] && eval "$(/opt/homebrew/bin/brew shellenv)"
             [[ -x /usr/local/bin/brew ]] && eval "$(/usr/local/bin/brew shellenv)"
