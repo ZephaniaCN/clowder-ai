@@ -433,8 +433,20 @@ export function useAgentMessages() {
           const invocationId = msg.invocationId ?? getCurrentInvocationIdForCat(msg.catId);
           // #266 P1: Try strict invocationId match first (prevents cross-invocation race),
           // then fall back to invocationless placeholder (covers lost invocation_created).
+          // Staleness guard: if the callback carries an explicit invocationId that differs
+          // from the current known one, it belongs to an older invocation — skip the
+          // invocationless fallback to avoid overwriting a newer bubble.
+          const currentKnownInvId = getCurrentInvocationIdForCat(msg.catId);
+          const isStaleCallback = msg.invocationId && currentKnownInvId && msg.invocationId !== currentKnownInvId;
+          if (isStaleCallback) {
+            console.warn('[useAgentMessages] Stale callback detected — skipping invocationless fallback', {
+              callbackInvocationId: msg.invocationId,
+              currentInvocationId: currentKnownInvId,
+              catId: msg.catId,
+            });
+          }
           const replacementTarget = invocationId
-            ? (findCallbackReplacementTarget(msg.catId, invocationId) ?? findInvocationlessStreamPlaceholder(msg.catId))
+            ? (findCallbackReplacementTarget(msg.catId, invocationId) ?? (isStaleCallback ? null : findInvocationlessStreamPlaceholder(msg.catId)))
             : findInvocationlessStreamPlaceholder(msg.catId);
 
           if (replacementTarget) {

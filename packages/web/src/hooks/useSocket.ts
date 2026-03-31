@@ -344,7 +344,7 @@ export function useSocket(callbacks: SocketCallbacks, threadId?: string) {
       // disconnect window. Trigger a history catch-up so the user sees the
       // response without needing F5.
       const storeState = useChatStore.getState();
-      if (tid && storeState.isLoading) {
+      if (tid && storeState.isLoading && storeState.currentThreadId === tid) {
         console.warn('[ws] Reconnect catch-up: isLoading=true after reconnect — requesting history catch-up', {
           threadId: tid,
         });
