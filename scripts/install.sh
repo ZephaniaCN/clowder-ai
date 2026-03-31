@@ -52,6 +52,11 @@ persist_user_bin() {
 append_to_profile() {
     local line="$1" profile="$2"
     if [[ -f "$profile" ]] && grep -qF "$line" "$profile" 2>/dev/null; then return 0; fi
+    # Ensure a leading newline if the file doesn't end with one, so we don't
+    # concatenate onto the previous line and break shell parsing.
+    if [[ -f "$profile" && -s "$profile" ]] && [[ $(tail -c 1 "$profile") ]]; then
+        echo >> "$profile"
+    fi
     echo "$line" >> "$profile"
 }
 # Return macOS login profile paths for both zsh and bash.
