@@ -6,13 +6,7 @@
  * ID 使用 generateSortableId 保证天然有序。
  */
 
-import type {
-  AutomationState,
-  CreateTaskInput,
-  TaskItem,
-  TaskKind,
-  UpdateTaskInput,
-} from '@cat-cafe/shared';
+import type { AutomationState, CreateTaskInput, TaskItem, TaskKind, UpdateTaskInput } from '@cat-cafe/shared';
 import { generateSortableId } from './MessageStore.js';
 
 const MAX_TASKS = 500;
@@ -42,10 +36,7 @@ export interface ITaskStore {
   listByKind(kind: TaskKind): TaskItem[] | Promise<TaskItem[]>;
 
   /** Patch automationState without touching other fields. */
-  patchAutomationState(
-    taskId: string,
-    patch: Partial<AutomationState>,
-  ): TaskItem | null | Promise<TaskItem | null>;
+  patchAutomationState(taskId: string, patch: Partial<AutomationState>): TaskItem | null | Promise<TaskItem | null>;
 }
 
 /**
@@ -136,10 +127,7 @@ export class TaskStore implements ITaskStore {
     return result;
   }
 
-  patchAutomationState(
-    taskId: string,
-    patch: Partial<AutomationState>,
-  ): TaskItem | null {
+  patchAutomationState(taskId: string, patch: Partial<AutomationState>): TaskItem | null {
     const existing = this.tasks.get(taskId);
     if (!existing) return null;
 

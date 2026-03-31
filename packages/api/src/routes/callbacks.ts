@@ -24,7 +24,6 @@ import type { IThreadStore, VotingStateV1 } from '../domains/cats/services/store
 import { canViewMessage } from '../domains/cats/services/stores/visibility.js';
 import { getVoiceBlockSynthesizer } from '../domains/cats/services/tts/VoiceBlockSynthesizer.js';
 import type { IEvidenceStore, IMarkerQueue, IReflectionService } from '../domains/memory/interfaces.js';
-import type { IPrTrackingStore } from '../infrastructure/email/PrTrackingStore.js';
 import { createModuleLogger } from '../infrastructure/logger.js';
 import type { SocketManager } from '../infrastructure/websocket/index.js';
 import { getFeatureTagId } from './backlog-doc-import.js';
@@ -58,8 +57,6 @@ export interface CallbackRoutesOptions {
   invocationTracker?: InvocationTracker;
   /** For mention ack cursor tracking (#77) */
   deliveryCursorStore?: DeliveryCursorStore;
-  /** TD091: PR tracking registration via MCP callback */
-  prTrackingStore?: IPrTrackingStore;
   /** Phase D: validates GitHub repo exists before PR tracking registration */
   validateRepo?: (repoFullName: string) => Promise<boolean>;
   /** F043 P1: feat_index provider override for tests */
@@ -289,7 +286,6 @@ export const callbacksRoutes: FastifyPluginAsync<CallbackRoutesOptions> = async 
     invocationRecordStore,
     invocationTracker,
     deliveryCursorStore,
-    prTrackingStore,
     validateRepo,
     featIndexProvider,
     queueProcessor,
@@ -996,9 +992,10 @@ export const callbacksRoutes: FastifyPluginAsync<CallbackRoutesOptions> = async 
   });
 
   app.post('/api/callbacks/register-pr-tracking', async (request, reply) => {
-    if (!prTrackingStore) {
+    // #320: Unified model — write to TaskStore instead of PrTrackingStore
+    if (!taskStore) {
       reply.status(503);
-      return { error: 'PR tracking not configured' };
+      return { error: 'Task store not configured' };
     }
 
     const parsed = registerPrTrackingSchema.safeParse(request.body);
@@ -1015,7 +1012,6 @@ export const callbacksRoutes: FastifyPluginAsync<CallbackRoutesOptions> = async 
     }
 
     // Use authoritative catId from invocation record, not caller payload.
-    // LLMs may pass wrong catId (e.g. tool description examples bias).
     const catId = record.catId;
 
     // Phase D: validate repo exists and is accessible (AC-D1)
@@ -1033,22 +1029,27 @@ export const callbacksRoutes: FastifyPluginAsync<CallbackRoutesOptions> = async 
       }
     }
 
+    const subjectKey = `pr:${repoFullName}#${prNumber}`;
+
     // Cloud Codex P1-2: ownership protection — reject cross-user overwrites
-    const existing = await prTrackingStore.get(repoFullName, prNumber);
+    const existing = await taskStore.getBySubject(subjectKey);
     if (existing && existing.userId !== record.userId) {
       reply.status(409);
       return { error: `PR ${repoFullName}#${prNumber} already registered by another user` };
     }
 
-    const entry = await prTrackingStore.register({
-      repoFullName,
-      prNumber,
-      catId,
+    const task = await taskStore.upsertBySubject({
+      kind: 'pr_tracking',
+      subjectKey,
       threadId: record.threadId,
+      title: `PR tracking: ${repoFullName}#${prNumber}`,
+      ownerCatId: catId,
+      why: `Tracking PR ${repoFullName}#${prNumber} for review feedback, CI/CD, and conflict detection`,
+      createdBy: catId,
       userId: record.userId,
     });
 
-    return { status: 'ok', threadId: record.threadId, entry };
+    return { status: 'ok', threadId: record.threadId, task };
   });
 
   // F22: Rich block creation via MCP callback

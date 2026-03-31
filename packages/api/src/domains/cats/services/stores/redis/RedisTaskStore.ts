@@ -13,14 +13,7 @@
  * TTL: 30 days default. pr_tracking tasks with status!=done have no TTL.
  */
 
-import type {
-  AutomationState,
-  CatId,
-  CreateTaskInput,
-  TaskItem,
-  TaskKind,
-  UpdateTaskInput,
-} from '@cat-cafe/shared';
+import type { AutomationState, CatId, CreateTaskInput, TaskItem, TaskKind, UpdateTaskInput } from '@cat-cafe/shared';
 import type { RedisClient } from '@cat-cafe/shared/utils';
 import { generateSortableId } from '../ports/MessageStore.js';
 import type { ITaskStore } from '../ports/TaskStore.js';
@@ -119,19 +112,14 @@ export class RedisTaskStore implements ITaskStore {
     return this.fetchTasksByIds(ids);
   }
 
-  async patchAutomationState(
-    taskId: string,
-    patch: Partial<AutomationState>,
-  ): Promise<TaskItem | null> {
+  async patchAutomationState(taskId: string, patch: Partial<AutomationState>): Promise<TaskItem | null> {
     const existing = await this.get(taskId);
     if (!existing) return null;
 
     const merged: AutomationState = {
       ...existing.automationState,
       ...patch,
-      ci: patch.ci
-        ? { ...existing.automationState?.ci, ...patch.ci }
-        : existing.automationState?.ci,
+      ci: patch.ci ? { ...existing.automationState?.ci, ...patch.ci } : existing.automationState?.ci,
       conflict: patch.conflict
         ? { ...existing.automationState?.conflict, ...patch.conflict }
         : existing.automationState?.conflict,
