@@ -299,6 +299,15 @@ async function main(): Promise<void> {
   const deliveryCursorStore = new DeliveryCursorStore(sessionStore);
   const threadStore = createThreadStore(redis);
   const taskStore = createTaskStore(redis);
+  if (redis) {
+    const { RedisPrTrackingStore } = await import('./infrastructure/email/RedisPrTrackingStore.js');
+    const { backfillLegacyPrTracking } = await import('./infrastructure/email/backfill-legacy-pr-tracking.js');
+    await backfillLegacyPrTracking({
+      legacyStore: new RedisPrTrackingStore(redis),
+      taskStore,
+      log: app.log,
+    });
+  }
   const backlogStore = createBacklogStore(redis);
   const workflowSopStore = createWorkflowSopStore(redis);
   const summaryStore = createSummaryStore(redis);

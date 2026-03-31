@@ -48,6 +48,12 @@ export function extractThreadId(subjectKey: string): string | null {
   return null;
 }
 
+function addSubjectKeyWithAliases(target: Set<string>, subjectKey: string): void {
+  target.add(subjectKey);
+  if (subjectKey.startsWith('pr:')) target.add(`pr-${subjectKey.slice(3)}`);
+  if (subjectKey.startsWith('pr-')) target.add(`pr:${subjectKey.slice(3)}`);
+}
+
 export const scheduleRoutes: FastifyPluginAsync<ScheduleRoutesOptions> = async (app, opts) => {
   const { taskRunner, dynamicTaskStore, templateRegistry, globalControlStore, packTemplateStore, taskStore } = opts;
 
@@ -65,7 +71,7 @@ export const scheduleRoutes: FastifyPluginAsync<ScheduleRoutesOptions> = async (
     const threadTasks = await taskStore.listByThread(threadId);
     const threadSubjectKeys = new Set<string>();
     for (const t of threadTasks) {
-      if (t.subjectKey) threadSubjectKeys.add(t.subjectKey);
+      if (t.subjectKey) addSubjectKeyWithAliases(threadSubjectKeys, t.subjectKey);
     }
     // Also match thread-prefixed subject keys (dynamic/thread-scoped tasks)
     threadSubjectKeys.add(`thread-${threadId}`);
@@ -74,7 +80,7 @@ export const scheduleRoutes: FastifyPluginAsync<ScheduleRoutesOptions> = async (
     // Derive which subject kinds exist in the thread (e.g. 'pr' if any pr:* keys)
     const threadSubjectKinds = new Set<string>();
     for (const sk of threadSubjectKeys) {
-      if (sk.startsWith('pr:')) threadSubjectKinds.add('pr');
+      if (sk.startsWith('pr:') || sk.startsWith('pr-')) threadSubjectKinds.add('pr');
       else if (sk.startsWith('thread:') || sk.startsWith('thread-')) threadSubjectKinds.add('thread');
     }
 
@@ -120,7 +126,7 @@ export const scheduleRoutes: FastifyPluginAsync<ScheduleRoutesOptions> = async (
       if (taskStore) {
         const threadTasks = await taskStore.listByThread(threadId);
         for (const t of threadTasks) {
-          if (t.subjectKey) subjectKeys.add(t.subjectKey);
+          if (t.subjectKey) addSubjectKeyWithAliases(subjectKeys, t.subjectKey);
         }
       }
       const allRuns: import('../infrastructure/scheduler/types.js').RunLedgerRow[] = [];

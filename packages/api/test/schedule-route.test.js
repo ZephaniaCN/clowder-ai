@@ -136,6 +136,31 @@ describe('Schedule Routes', () => {
       const body = JSON.parse(res.payload);
       assert.ok(!body.tasks.some((task) => task.id === 'cicd-check'));
     });
+
+    it('matches legacy pr- run subjects for thread filtering', async () => {
+      taskStore.upsertBySubject({
+        kind: 'pr_tracking',
+        subjectKey: 'pr:owner/repo#42',
+        threadId: 'abc123',
+        title: 'PR tracking: owner/repo#42',
+        why: 'track pr',
+        createdBy: 'opus',
+      });
+      ledger.record({
+        task_id: 'cicd-check',
+        subject_key: 'pr-owner/repo#42',
+        outcome: 'RUN_DELIVERED',
+        signal_summary: null,
+        duration_ms: 10,
+        started_at: new Date().toISOString(),
+        assigned_cat_id: null,
+      });
+
+      const res = await app.inject({ method: 'GET', url: '/api/schedule/tasks?threadId=abc123' });
+      assert.equal(res.statusCode, 200);
+      const body = JSON.parse(res.payload);
+      assert.ok(body.tasks.some((task) => task.id === 'cicd-check'));
+    });
   });
 
   describe('GET /api/schedule/tasks/:id/runs', () => {
@@ -229,6 +254,34 @@ describe('Schedule Routes', () => {
       const body = JSON.parse(res.payload);
       assert.ok(body.runs.length >= 1, 'should find thread-target run despite being beyond default LIMIT');
       assert.equal(body.runs[0].subject_key, 'thread-target');
+    });
+
+    it('matches legacy pr- run subjects when filtering by threadId', async () => {
+      taskStore.upsertBySubject({
+        kind: 'pr_tracking',
+        subjectKey: 'pr:owner/repo#42',
+        threadId: 'abc123',
+        title: 'PR tracking: owner/repo#42',
+        why: 'track pr',
+        createdBy: 'opus',
+      });
+      ledger.record({
+        task_id: 'cicd-check',
+        subject_key: 'pr-owner/repo#42',
+        outcome: 'RUN_DELIVERED',
+        signal_summary: null,
+        duration_ms: 10,
+        started_at: new Date().toISOString(),
+        assigned_cat_id: null,
+      });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/schedule/tasks/cicd-check/runs?threadId=abc123',
+      });
+      assert.equal(res.statusCode, 200);
+      const body = JSON.parse(res.payload);
+      assert.ok(body.runs.some((run) => run.subject_key === 'pr-owner/repo#42'));
     });
   });
 
