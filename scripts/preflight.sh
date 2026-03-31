@@ -44,7 +44,9 @@ test_endpoint() {
         curl -sSL --connect-timeout "$TIMEOUT" --max-time "$((TIMEOUT * 2))" \
              -o /dev/null -w '%{http_code}' "$url" >/dev/null 2>&1
     elif command -v wget &>/dev/null; then
-        wget -q --timeout="$TIMEOUT" --spider "$url" 2>/dev/null
+        # --spider exits non-zero on 4xx/5xx; use --server-response to
+        # capture headers and grep for any HTTP reply (proves reachable).
+        wget --server-response --spider --timeout="$TIMEOUT" -q "$url" 2>&1 | grep -qi 'HTTP/'
     else
         # Fallback: bash TCP probe — extract host, port, and scheme from URL
         local host port scheme
