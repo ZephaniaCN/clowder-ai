@@ -109,7 +109,11 @@ export class RedisTaskStore implements ITaskStore {
 
     // Subject already claimed — read and update existing
     const existingId = await this.redis.get(TaskKeys.subject(sk));
-    if (!existingId) return this.create(input); // deleted between SETNX and GET
+    if (!existingId) {
+      // Another worker may have claimed/released/reclaimed the slot between SETNX and GET.
+      // Retry the atomic upsert flow instead of blindly creating a duplicate task hash.
+      return this.upsertBySubject(input);
+    }
 
     const existing = await this.get(existingId);
     if (!existing) {

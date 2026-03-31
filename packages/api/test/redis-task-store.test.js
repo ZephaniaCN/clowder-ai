@@ -432,4 +432,63 @@ describe('RedisTaskStore unit behavior', () => {
     assert.equal(redis.ttls.get(TaskKeys.thread('thread-old')), 60);
     assert.equal(redis.ttls.get(TaskKeys.thread('thread-new')), undefined);
   });
+
+  it('retries atomic upsert instead of blindly creating when subject GET races to null', async () => {
+    const { RedisTaskStore } = await import('../dist/domains/cats/services/stores/redis/RedisTaskStore.js');
+    const { TaskKeys } = await import('../dist/domains/cats/services/stores/redis-keys/task-keys.js');
+    const redis = new FakeRedisForTaskStore();
+    const store = new RedisTaskStore(redis, { ttlSeconds: 60 });
+
+    const externalTaskId = 'task-existing';
+    redis.hashes.set(TaskKeys.detail(externalTaskId), {
+      id: externalTaskId,
+      kind: 'pr_tracking',
+      threadId: 'thread-existing',
+      subjectKey: 'pr:owner/repo#123',
+      title: 'PR tracking: owner/repo#123',
+      ownerCatId: '',
+      status: 'todo',
+      why: 'track pr',
+      createdBy: 'opus',
+      createdAt: '1',
+      updatedAt: '1',
+      userId: '',
+    });
+
+    const originalSetnx = redis.setnx.bind(redis);
+    const originalGet = redis.get.bind(redis);
+    let firstSetnx = true;
+    let firstGet = true;
+
+    redis.setnx = async (key, value) => {
+      if (key === TaskKeys.subject('pr:owner/repo#123') && firstSetnx) {
+        firstSetnx = false;
+        return 0;
+      }
+      return originalSetnx(key, value);
+    };
+
+    redis.get = async (key) => {
+      if (key === TaskKeys.subject('pr:owner/repo#123') && firstGet) {
+        firstGet = false;
+        redis.strings.set(key, externalTaskId);
+        return null;
+      }
+      return originalGet(key);
+    };
+
+    const result = await store.upsertBySubject({
+      kind: 'pr_tracking',
+      subjectKey: 'pr:owner/repo#123',
+      threadId: 'thread-new',
+      title: 'PR tracking: owner/repo#123',
+      why: 'track pr',
+      createdBy: 'opus',
+    });
+
+    assert.equal(result.id, externalTaskId);
+    assert.equal(redis.strings.get(TaskKeys.subject('pr:owner/repo#123')), externalTaskId);
+    const kindIds = await redis.zrange(TaskKeys.kind('pr_tracking'), 0, -1);
+    assert.deepEqual(kindIds, [externalTaskId]);
+  });
 });
