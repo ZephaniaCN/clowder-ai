@@ -790,7 +790,15 @@ if ! command -v pnpm &>/dev/null; then
     if ! command -v pnpm &>/dev/null; then
         npm_global_install pnpm || { warn "npm failed — trying npmmirror"; $SUDO npm install -g pnpm --registry https://registry.npmmirror.com; }
     fi
-    [[ "$USED_FNM" == true ]] && persist_user_bin pnpm
+    persist_user_bin pnpm
+    # Ensure ~/.local/bin is on PATH for new terminals (may not have been written
+    # if Node was already present and the Node install step was skipped).
+    if [[ "$DISTRO_FAMILY" == "darwin" ]]; then
+        for _prof in $(darwin_login_profiles); do
+            append_to_profile 'export PATH="$HOME/.local/bin:$PATH"  # Clowder AI user binaries' "$_prof"
+        done
+        unset _prof
+    fi
     ok "pnpm $(pnpm -v) installed"
 else ok "pnpm $(pnpm -v) already installed"
 fi
