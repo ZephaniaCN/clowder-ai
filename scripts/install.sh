@@ -621,6 +621,13 @@ if [[ "$DISTRO_FAMILY" == "darwin" ]]; then
         *":$USER_BIN_DIR:"*) ;;
         *) export PATH="$USER_BIN_DIR:$PATH" ;;
     esac
+    # Persist ~/.local/bin to login profiles unconditionally so that any later
+    # persist_user_bin symlinks (CLI tools, etc.) survive in new terminals —
+    # even when Node and pnpm are already installed and their blocks are skipped.
+    for _prof in $(darwin_login_profiles); do
+        append_to_profile 'export PATH="$HOME/.local/bin:$PATH"  # Clowder AI user binaries' "$_prof"
+    done
+    unset _prof
 fi
 
 resolve_project_dir

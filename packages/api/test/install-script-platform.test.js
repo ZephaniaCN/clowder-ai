@@ -258,6 +258,21 @@ test('darwin brew shellenv persisted to login profile after recovery', () => {
   );
 });
 
+test('darwin ~/.local/bin persisted unconditionally (not only inside Node/pnpm install)', () => {
+  // #174 P2: If Node and pnpm are pre-installed, their blocks are skipped
+  // but persist_user_bin still writes to ~/.local/bin. The persistence must
+  // happen in the USER_BIN_DIR setup block, not only inside conditional blocks.
+  const userBinBlock = installScriptText.match(
+    /USER_BIN_DIR="\$HOME\/\.local\/bin"[\s\S]*?(?=resolve_project_dir)/,
+  );
+  assert.ok(userBinBlock, 'must have a USER_BIN_DIR setup block on Darwin');
+  assert.match(
+    userBinBlock[0],
+    /append_to_profile.*\.local\/bin/,
+    'USER_BIN_DIR block must persist ~/.local/bin to login profiles unconditionally',
+  );
+});
+
 test('darwin PATH persistence covers both zsh and bash profiles', () => {
   // #174 P2: bash users must also get PATH additions
   assert.match(installScriptText, /darwin_login_profiles\(\)/, 'must define darwin_login_profiles helper');
