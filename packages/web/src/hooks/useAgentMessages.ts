@@ -600,13 +600,21 @@ export function useAgentMessages() {
         // cat from PlanBoardPanel and defeat clearCatStatuses' snapshot preservation.
         setCatInvocation(msg.catId, { invocationId: undefined });
         if (msg.isFinal) {
-          clearDoneTimeout();
           // F108: Remove specific invocation slot; fall back to cat-scoped lookup.
           // Steer/force cancel broadcasts done(isFinal) without invocationId — find and
           // remove only this cat's latest active slot to avoid clearing other cats' slots
           // during multi-cat concurrent dispatch.
           if (msg.invocationId) {
-            removeActiveInvocation(msg.invocationId);
+            // F869: Multi-cat slot-aware cleanup. Primary cats use invocationId as slot
+            // key; secondary cats use ${invocationId}-${catId}. Only remove the slot
+            // that belongs to THIS cat to prevent cross-cat interference during concurrent
+            // multi-cat dispatch.
+            const slotState = useChatStore.getState();
+            const primarySlot = slotState.activeInvocations[msg.invocationId];
+            if (primarySlot?.catId === msg.catId) {
+              removeActiveInvocation(msg.invocationId);
+            }
+            removeActiveInvocation(`${msg.invocationId}-${msg.catId}`);
             // Hydrated synthetic IDs (hydrated-${threadId}-${catId}) won't match the real
             // invocationId from the server. Only clean up hydrated- prefixed orphans to
             // avoid accidentally deleting a NEW invocation's slot during same-cat preempt
@@ -629,6 +637,7 @@ export function useAgentMessages() {
           // the execution state (loading/intentMode/catStatuses) of remaining cats.
           const remainingInvocations = Object.keys(useChatStore.getState().activeInvocations ?? {}).length;
           if (remainingInvocations === 0) {
+            clearDoneTimeout();
             setLoading(false);
             setIntentMode(null);
             clearCatStatuses();
@@ -638,10 +647,12 @@ export function useAgentMessages() {
           // (F123 PR #465, symptom-fixture-matrix.md:23). Clearing on done(isFinal)
           // would allow reordered stale chunks to recreate ghost bubbles.
           a2aGroupRef.current = null;
-          // #266 ghost-message: done(isFinal) arrived but no active bubble exists.
-          // Stream events AND callback can both be lost during a micro-disconnect
-          // while done(isFinal) arrives after reconnect. Catch-up is benign
-          // (replace: true dedupes the fetch result).
+          // Bug C safety net: if done(isFinal) arrived but no streaming bubble
+          // was ever created for this cat, events were lost (socket transport
+          // drop, micro-disconnect, dual-pointer guard mismatch, etc.).
+          // Request a history catch-up so the user sees the response without F5.
+          // Unconditional: covers ghost-message scenario where ALL events
+          // (stream + callback) were lost during disconnect (#266, #276).
           if (!messageId) {
             const tid = useChatStore.getState().currentThreadId;
             console.warn('[stream-catchup] done(isFinal) with no active bubble — requesting catch-up', {
@@ -992,11 +1003,16 @@ export function useAgentMessages() {
         });
         // Only stop loading on isFinal; size===0 would false-positive in serial gaps
         if (msg.isFinal) {
-          clearDoneTimeout(); // prevent 5-min timer from firing timeout text after error
           // F108: clear this cat's invocation slot on terminal error
           if (msg.invocationId) {
-            removeActiveInvocation(msg.invocationId);
-            // Same hydrated-only orphan cleanup as the done(isFinal) path above.
+            // F869: Same multi-cat slot-aware cleanup as the done(isFinal) path.
+            const slotState = useChatStore.getState();
+            const primarySlot = slotState.activeInvocations[msg.invocationId];
+            if (primarySlot?.catId === msg.catId) {
+              removeActiveInvocation(msg.invocationId);
+            }
+            removeActiveInvocation(`${msg.invocationId}-${msg.catId}`);
+            // Hydrated-only orphan cleanup (same as done path).
             const stateAfter = useChatStore.getState();
             const orphan = findLatestActiveInvocationIdForCat(stateAfter.activeInvocations, msg.catId);
             if (orphan?.startsWith('hydrated-')) {
@@ -1013,6 +1029,7 @@ export function useAgentMessages() {
           // F108 P1 fix: Only clear global state when the LAST active invocation ends.
           const remainingInvocations = Object.keys(useChatStore.getState().activeInvocations ?? {}).length;
           if (remainingInvocations === 0) {
+            clearDoneTimeout();
             setLoading(false);
             setIntentMode(null);
             clearCatStatuses();
