@@ -262,9 +262,7 @@ test('darwin ~/.local/bin persisted unconditionally (not only inside Node/pnpm i
   // #174 P2: If Node and pnpm are pre-installed, their blocks are skipped
   // but persist_user_bin still writes to ~/.local/bin. The persistence must
   // happen in the USER_BIN_DIR setup block, not only inside conditional blocks.
-  const userBinBlock = installScriptText.match(
-    /USER_BIN_DIR="\$HOME\/\.local\/bin"[\s\S]*?(?=resolve_project_dir)/,
-  );
+  const userBinBlock = installScriptText.match(/USER_BIN_DIR="\$HOME\/\.local\/bin"[\s\S]*?(?=resolve_project_dir)/);
   assert.ok(userBinBlock, 'must have a USER_BIN_DIR setup block on Darwin');
   assert.match(
     userBinBlock[0],
