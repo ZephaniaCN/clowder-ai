@@ -69,8 +69,8 @@ function Resolve-Registry {
         $line = Get-Content $npmrc | Where-Object { $_ -match '^registry=' } | Select-Object -First 1
         if ($line) { return ($line -replace '^registry=', '').Trim() }
     }
-    # User .npmrc
-    $userNpmrc = Join-Path $env:USERPROFILE ".npmrc"
+    # User .npmrc (NPM_CONFIG_USERCONFIG overrides default path)
+    $userNpmrc = if ($env:NPM_CONFIG_USERCONFIG) { $env:NPM_CONFIG_USERCONFIG } else { Join-Path $env:USERPROFILE ".npmrc" }
     if (Test-Path $userNpmrc) {
         $line = Get-Content $userNpmrc | Where-Object { $_ -match '^registry=' } | Select-Object -First 1
         if ($line) { return ($line -replace '^registry=', '').Trim() }

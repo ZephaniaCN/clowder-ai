@@ -75,9 +75,10 @@ resolve_registry() {
         local r; r="$(grep -E '^registry=' "$PROJECT_ROOT/.npmrc" 2>/dev/null | head -1 | cut -d= -f2-)"
         [[ -n "$r" ]] && { printf '%s' "$r"; return; }
     fi
-    # User .npmrc
-    if [[ -f "$HOME/.npmrc" ]]; then
-        local r; r="$(grep -E '^registry=' "$HOME/.npmrc" 2>/dev/null | head -1 | cut -d= -f2-)"
+    # User .npmrc (NPM_CONFIG_USERCONFIG overrides default path)
+    local user_npmrc="${NPM_CONFIG_USERCONFIG:-$HOME/.npmrc}"
+    if [[ -f "$user_npmrc" ]]; then
+        local r; r="$(grep -E '^registry=' "$user_npmrc" 2>/dev/null | head -1 | cut -d= -f2-)"
         [[ -n "$r" ]] && { printf '%s' "$r"; return; }
     fi
     printf '%s' "https://registry.npmjs.org"
