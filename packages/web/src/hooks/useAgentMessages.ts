@@ -485,7 +485,10 @@ export function useAgentMessages() {
             // placeholder existed yet. Mark the invocation as replaced so that
             // late-arriving stream chunks for the same invocation are suppressed
             // instead of spawning a second bubble.
-            if (invocationId) {
+            // Skip lock when strict callback match failed (hasExplicitInvocationId):
+            // the invocationId belongs to an older invocation and must not suppress
+            // stream chunks from the current (possibly unknown) invocation.
+            if (invocationId && !hasExplicitInvocationId) {
               replacedInvocationsRef.current.set(msg.catId, invocationId);
             }
           }
