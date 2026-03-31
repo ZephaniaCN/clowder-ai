@@ -27,6 +27,7 @@ import { WhisperCatSelector, WhisperTargetChips } from './WhisperCatSelector';
 /** Module-level draft storage — survives component unmount/remount across thread switches */
 export const threadDrafts = new Map<string, string>();
 export const threadImageDrafts = new Map<string, File[]>();
+const MAX_IMAGE_DRAFT_THREADS = 5;
 
 interface ChatInputProps {
   /** Thread ID for draft persistence — drafts are saved per-thread */
@@ -497,8 +498,17 @@ export function ChatInput({
     if (!threadId) return;
     if (input) threadDrafts.set(threadId, input);
     else threadDrafts.delete(threadId);
-    if (images.length > 0) threadImageDrafts.set(threadId, images);
-    else threadImageDrafts.delete(threadId);
+    if (images.length > 0) {
+      threadImageDrafts.delete(threadId); // move to end (Map insertion order)
+      threadImageDrafts.set(threadId, images);
+      // LRU eviction: keep only the most recent N threads with image drafts
+      while (threadImageDrafts.size > MAX_IMAGE_DRAFT_THREADS) {
+        const oldest = threadImageDrafts.keys().next().value;
+        if (oldest !== undefined) threadImageDrafts.delete(oldest);
+      }
+    } else {
+      threadImageDrafts.delete(threadId);
+    }
   }, [input, images, threadId]);
 
   // F080: recalculate ghost suggestion whenever input changes (covers all setInput paths)

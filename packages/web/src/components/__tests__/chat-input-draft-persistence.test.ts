@@ -221,6 +221,33 @@ describe('ChatInput draft persistence', () => {
     expect(threadImageDrafts.has('thread-IS')).toBe(false);
   });
 
+  it('evicts oldest image drafts when exceeding LRU limit', () => {
+    const onSend = vi.fn();
+
+    // Seed 5 image drafts (the max), then add a 6th before mounting
+    for (let i = 1; i <= 5; i++) {
+      threadImageDrafts.set(`thread-LRU-${i}`, [new File([`${i}`], `${i}.png`, { type: 'image/png' })]);
+    }
+    // Pre-seed 6th so useState initializer picks it up as images
+    threadImageDrafts.set('thread-LRU-6', [new File(['6'], '6.png', { type: 'image/png' })]);
+    expect(threadImageDrafts.size).toBe(6);
+
+    // Mount thread-LRU-6 — images state initializes from draft map
+    act(() => {
+      root.render(React.createElement(ChatInput, { threadId: 'thread-LRU-6', onSend }));
+    });
+    // Type to trigger useLayoutEffect (images.length > 0 from init)
+    act(() => {
+      typeInto(getTextarea(), 'trigger');
+    });
+    act(() => root.unmount());
+
+    // LRU eviction: max 5, oldest (thread-LRU-1) should be evicted
+    expect(threadImageDrafts.size).toBeLessThanOrEqual(5);
+    expect(threadImageDrafts.has('thread-LRU-1')).toBe(false);
+    expect(threadImageDrafts.has('thread-LRU-6')).toBe(true);
+  });
+
   it('does not persist draft when threadId is undefined', () => {
     const onSend = vi.fn();
 
