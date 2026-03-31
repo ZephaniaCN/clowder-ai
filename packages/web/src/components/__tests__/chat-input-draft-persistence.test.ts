@@ -1,10 +1,11 @@
 /**
- * F80: Draft persistence across thread switches.
+ * F80/F314: Draft persistence across thread switches.
  *
  * Verifies that:
  * 1. Typed text survives unmount/remount with the same threadId
  * 2. Different threads maintain independent drafts
  * 3. Sending a message clears the draft
+ * 4. Attached images survive thread remount, stay thread-scoped, and flow into onSend
  */
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -21,7 +22,6 @@ vi.mock('@/components/icons/LoadingIcon', () => ({
 vi.mock('@/components/icons/AttachIcon', () => ({
   AttachIcon: () => React.createElement('span', null, 'attach'),
 }));
-vi.mock('@/components/ImagePreview', () => ({ ImagePreview: () => null }));
 vi.mock('@/utils/compressImage', () => ({ compressImage: (f: File) => Promise.resolve(f) }));
 vi.mock('@/hooks/useCatData', () => ({
   useCatData: () => ({
@@ -53,10 +53,14 @@ afterAll(() => {
 
 let container: HTMLDivElement;
 let root: Root;
+const originalCreateObjectURL = URL.createObjectURL;
+const originalRevokeObjectURL = URL.revokeObjectURL;
 
 beforeEach(() => {
   threadDrafts.clear();
   threadImageDrafts.clear();
+  URL.createObjectURL = vi.fn((file: Blob) => `blob:${(file as File).name ?? 'image'}`);
+  URL.revokeObjectURL = vi.fn();
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -64,10 +68,20 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount());
   container.remove();
+  URL.createObjectURL = originalCreateObjectURL;
+  URL.revokeObjectURL = originalRevokeObjectURL;
 });
 
 function getTextarea(): HTMLTextAreaElement {
   return container.querySelector('textarea') as HTMLTextAreaElement;
+}
+
+function getFileInput(): HTMLInputElement {
+  return container.querySelector('input[type="file"]') as HTMLInputElement;
+}
+
+function getPreviewImage(name: string): HTMLImageElement | null {
+  return container.querySelector(`img[alt="${name}"]`) as HTMLImageElement | null;
 }
 
 function typeInto(textarea: HTMLTextAreaElement, value: string) {
@@ -75,6 +89,22 @@ function typeInto(textarea: HTMLTextAreaElement, value: string) {
   const nativeSetter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!;
   nativeSetter.call(textarea, value);
   textarea.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function makeImageFile(name: string): File {
+  return new File([`fake-${name}`], name, { type: 'image/png' });
+}
+
+async function attachFiles(files: File[]) {
+  const input = getFileInput();
+  Object.defineProperty(input, 'files', {
+    configurable: true,
+    value: files,
+  });
+  await act(async () => {
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    await Promise.resolve();
+  });
 }
 
 describe('ChatInput draft persistence', () => {
@@ -160,64 +190,82 @@ describe('ChatInput draft persistence', () => {
     expect(getTextarea().value).toBe('');
   });
 
-  it('restores image drafts when remounting with same threadId', () => {
+  it('restores image preview when remounting with same threadId', async () => {
     const onSend = vi.fn();
-    const fakeImage = new File(['png-data'], 'photo.png', { type: 'image/png' });
+    const fakeImage = makeImageFile('photo.png');
 
-    // Pre-seed the image draft map (simulates images attached before unmount)
-    threadImageDrafts.set('thread-IMG', [fakeImage]);
+    act(() => {
+      root.render(React.createElement(ChatInput, { threadId: 'thread-IMG', onSend }));
+    });
+    await attachFiles([fakeImage]);
+    expect(getPreviewImage('photo.png')).toBeTruthy();
 
-    // Mount with thread that has saved image draft
+    act(() => root.unmount());
+    root = createRoot(container);
     act(() => {
       root.render(React.createElement(ChatInput, { threadId: 'thread-IMG', onSend }));
     });
 
-    // Verify the image draft was restored via the module-level map
-    expect(threadImageDrafts.get('thread-IMG')).toEqual([fakeImage]);
+    expect(getPreviewImage('photo.png')).toBeTruthy();
   });
 
-  it('maintains independent image drafts per thread', () => {
+  it('maintains independent image previews per thread across switches', async () => {
     const onSend = vi.fn();
-    const imgA = new File(['a'], 'a.png', { type: 'image/png' });
-    const imgB = new File(['b'], 'b.png', { type: 'image/png' });
+    const imgA = makeImageFile('a.png');
+    const imgB = makeImageFile('b.png');
 
-    // Seed image drafts for two threads
-    threadImageDrafts.set('thread-IA', [imgA]);
-    threadImageDrafts.set('thread-IB', [imgB]);
-
-    // Mount thread-IA — its draft should be independent
     act(() => {
       root.render(React.createElement(ChatInput, { threadId: 'thread-IA', onSend }));
     });
-    expect(threadImageDrafts.get('thread-IA')).toEqual([imgA]);
-    expect(threadImageDrafts.get('thread-IB')).toEqual([imgB]);
+    await attachFiles([imgA]);
+    expect(getPreviewImage('a.png')).toBeTruthy();
+
+    act(() => root.unmount());
+    root = createRoot(container);
+    act(() => {
+      root.render(React.createElement(ChatInput, { threadId: 'thread-IB', onSend }));
+    });
+    expect(getPreviewImage('a.png')).toBeNull();
+
+    await attachFiles([imgB]);
+    expect(getPreviewImage('b.png')).toBeTruthy();
+
+    act(() => root.unmount());
+    root = createRoot(container);
+    act(() => {
+      root.render(React.createElement(ChatInput, { threadId: 'thread-IA', onSend }));
+    });
+    expect(getPreviewImage('a.png')).toBeTruthy();
+    expect(getPreviewImage('b.png')).toBeNull();
   });
 
-  it('clears image drafts after sending', () => {
+  it('sends restored images and clears image drafts after sending', async () => {
     const onSend = vi.fn();
-    const fakeImage = new File(['data'], 'pic.png', { type: 'image/png' });
+    const fakeImage = makeImageFile('pic.png');
 
-    // Seed an image draft, mount, and send
-    threadImageDrafts.set('thread-IS', [fakeImage]);
     act(() => {
       root.render(React.createElement(ChatInput, { threadId: 'thread-IS', onSend }));
     });
+    await attachFiles([fakeImage]);
+    expect(getPreviewImage('pic.png')).toBeTruthy();
+
     act(() => {
       typeInto(getTextarea(), 'msg with image');
     });
 
-    // Press Enter to send
     act(() => {
       getTextarea().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     });
+    expect(onSend).toHaveBeenCalledWith('msg with image', [fakeImage], undefined, undefined);
+    expect(getPreviewImage('pic.png')).toBeNull();
 
-    // After send, unmount and remount — image draft should be cleared
     act(() => root.unmount());
     root = createRoot(container);
     act(() => {
       root.render(React.createElement(ChatInput, { threadId: 'thread-IS', onSend }));
     });
-    // Text draft cleared after send → image draft should also be cleared
+
+    expect(getPreviewImage('pic.png')).toBeNull();
     expect(threadImageDrafts.has('thread-IS')).toBe(false);
   });
 
