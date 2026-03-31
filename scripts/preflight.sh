@@ -39,8 +39,10 @@ pf_info() { printf "${CYAN}%s${NC}\n" "$*"; }
 test_endpoint() {
     local url="$1"
     if command -v curl &>/dev/null; then
-        curl -fsSL --connect-timeout "$TIMEOUT" --max-time "$((TIMEOUT * 2))" \
-             -o /dev/null -w '' "$url" 2>/dev/null
+        # No -f flag: we test *network reachability*, not content.
+        # A 403 (e.g. Puppeteer CDN root) proves the host is reachable.
+        curl -sSL --connect-timeout "$TIMEOUT" --max-time "$((TIMEOUT * 2))" \
+             -o /dev/null -w '%{http_code}' "$url" >/dev/null 2>&1
     elif command -v wget &>/dev/null; then
         wget -q --timeout="$TIMEOUT" --spider "$url" 2>/dev/null
     else
@@ -194,7 +196,9 @@ for pkg in "${PREBUILD_PKGS[@]:-}"; do
     [[ -z "$pkg" ]] && continue
     norm=$(normalize_pkg_env "$pkg")
     env_name="npm_config_${norm}_binary_host"
+    env_name_mirror="npm_config_${norm}_binary_host_mirror"
     configured="${!env_name:-}"
+    [[ -z "$configured" ]] && configured="${!env_name_mirror:-}"
     if [[ -n "$configured" ]]; then
         # User has a mirror configured — test that instead of GitHub
         TOTAL=$((TOTAL + 1))
@@ -236,7 +240,9 @@ if [[ ${#GITHUB_NEEDED[@]} -gt 0 ]]; then
 fi
 
 # puppeteer → browser CDN
-if has_puppeteer; then
+# Skip if PUPPETEER_SKIP_DOWNLOAD or PUPPETEER_SKIP_CHROMIUM_DOWNLOAD is set
+# (pnpm install won't download Chrome, so CDN check is unnecessary)
+if has_puppeteer && [[ -z "${PUPPETEER_SKIP_DOWNLOAD:-}" ]] && [[ -z "${PUPPETEER_SKIP_CHROMIUM_DOWNLOAD:-}" ]]; then
     PUPPETEER_URL=$(resolve_puppeteer_url)
     TOTAL=$((TOTAL + 1))
     # Extract host for display
@@ -248,6 +254,8 @@ if has_puppeteer; then
         pf_fail "Browser CDN: $PUPPETEER_HOST (puppeteer) — UNREACHABLE"
         FAILURES+=("browser|puppeteer|export PUPPETEER_DOWNLOAD_BASE_URL=<YOUR_MIRROR_URL>")
     fi
+elif has_puppeteer; then
+    pf_ok "Browser CDN: skipped (PUPPETEER_SKIP_DOWNLOAD or PUPPETEER_SKIP_CHROMIUM_DOWNLOAD is set)"
 fi
 
 echo ""

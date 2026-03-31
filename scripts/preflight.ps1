@@ -44,6 +44,11 @@ function Test-Endpoint {
         $resp = $req.GetResponse()
         $resp.Close()
         return $true
+    } catch [System.Net.WebException] {
+        # We test *network reachability*, not content availability.
+        # A 403 (e.g. Puppeteer CDN root) proves the host is reachable.
+        if ($_.Exception.Response) { return $true }
+        return $false
     } catch {
         return $false
     }
@@ -201,7 +206,11 @@ $githubNeeded = @()  # packages without configured mirror
 
 foreach ($pkg in $prebuildPkgs) {
     $envName = ConvertTo-PkgEnvName $pkg
+    $envNameMirror = $envName + "_mirror"
     $configured = [System.Environment]::GetEnvironmentVariable($envName)
+    if (-not $configured) {
+        $configured = [System.Environment]::GetEnvironmentVariable($envNameMirror)
+    }
     if ($configured) {
         # User has a mirror configured — test that instead of GitHub
         $total++
@@ -241,7 +250,11 @@ if ($githubNeeded.Count -gt 0) {
 }
 
 # puppeteer → browser CDN
-if (Test-HasPuppeteer) {
+# Skip if PUPPETEER_SKIP_DOWNLOAD or PUPPETEER_SKIP_CHROMIUM_DOWNLOAD is set
+# (pnpm install won't download Chrome, so CDN check is unnecessary)
+$skipPuppeteerDl = [System.Environment]::GetEnvironmentVariable("PUPPETEER_SKIP_DOWNLOAD")
+$skipPuppeteerChrome = [System.Environment]::GetEnvironmentVariable("PUPPETEER_SKIP_CHROMIUM_DOWNLOAD")
+if ((Test-HasPuppeteer) -and (-not $skipPuppeteerDl) -and (-not $skipPuppeteerChrome)) {
     $puppeteerUrl = Resolve-PuppeteerUrl
     $total++
     $puppeteerHost = ([System.Uri]$puppeteerUrl).Host
@@ -255,6 +268,8 @@ if (Test-HasPuppeteer) {
             Fix = "`$env:PUPPETEER_DOWNLOAD_BASE_URL = `"<YOUR_MIRROR_URL>`""
         }
     }
+} elseif (Test-HasPuppeteer) {
+    Write-PfOk "Browser CDN: skipped (PUPPETEER_SKIP_DOWNLOAD or PUPPETEER_SKIP_CHROMIUM_DOWNLOAD is set)"
 }
 
 Write-Host ""
