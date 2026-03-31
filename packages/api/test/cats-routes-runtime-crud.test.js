@@ -536,6 +536,143 @@ describe('cats routes runtime CRUD', { concurrency: false }, () => {
     assert.equal(createRes.statusCode, 201, 'cross-protocol api_key binding should be allowed');
   });
 
+  it('POST /api/cats rejects non-opencode client bound to incompatible protocol account', async () => {
+    const projectRoot = createProjectRoot();
+    process.env.CAT_TEMPLATE_PATH = join(projectRoot, 'cat-template.json');
+
+    const { createProviderProfile } = await import('./helpers/create-test-account.js');
+    const openaiAccount = await createProviderProfile(projectRoot, {
+      displayName: 'MiniMax OpenAI',
+      authType: 'api_key',
+      protocol: 'openai',
+      baseUrl: 'https://api.minimaxi.com/v1',
+      apiKey: 'sk-test-minimax',
+      models: ['MiniMax-M2.7'],
+    });
+
+    const Fastify = (await import('fastify')).default;
+    const { catsRoutes } = await import('../dist/routes/cats.js');
+
+    const app = Fastify();
+    await app.register(catsRoutes);
+
+    // client "anthropic" + account protocol "openai" → should be rejected
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/cats',
+      headers: {
+        'content-type': 'application/json',
+        'x-cat-cafe-user': 'codex',
+      },
+      body: JSON.stringify({
+        catId: 'runtime-minimax-mismatch',
+        name: '协议不匹配猫',
+        displayName: '协议不匹配猫',
+        avatar: '/avatars/test.png',
+        color: { primary: '#ff0000', secondary: '#ffcccc' },
+        mentionPatterns: ['@mismatch-test'],
+        roleDescription: '测试用',
+        client: 'anthropic',
+        providerProfileId: openaiAccount.id,
+        defaultModel: 'MiniMax-M2.7',
+      }),
+    });
+
+    assert.equal(createRes.statusCode, 400, 'protocol mismatch should be rejected');
+    const body = JSON.parse(createRes.body);
+    assert.match(body.error, /requires "anthropic" protocol/i);
+  });
+
+  it('POST /api/cats strips trailing slash from model name', async () => {
+    const projectRoot = createProjectRoot();
+    process.env.CAT_TEMPLATE_PATH = join(projectRoot, 'cat-template.json');
+
+    const { createProviderProfile } = await import('./helpers/create-test-account.js');
+    await createProviderProfile(projectRoot, {
+      displayName: 'Anthropic Key',
+      authType: 'api_key',
+      protocol: 'anthropic',
+      baseUrl: 'https://api.anthropic.com',
+      apiKey: 'sk-test-anthropic',
+      models: ['claude-opus-4-6'],
+    });
+
+    const Fastify = (await import('fastify')).default;
+    const { catsRoutes } = await import('../dist/routes/cats.js');
+
+    const app = Fastify();
+    await app.register(catsRoutes);
+
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/cats',
+      headers: {
+        'content-type': 'application/json',
+        'x-cat-cafe-user': 'codex',
+      },
+      body: JSON.stringify({
+        catId: 'runtime-trailing-slash',
+        name: '尾斜杠测试猫',
+        displayName: '尾斜杠测试猫',
+        avatar: '/avatars/test.png',
+        color: { primary: '#00ff00', secondary: '#ccffcc' },
+        mentionPatterns: ['@slash-test'],
+        roleDescription: '测试用',
+        client: 'anthropic',
+        providerProfileId: 'anthropic-key',
+        defaultModel: 'claude-opus-4-6/',
+      }),
+    });
+
+    assert.equal(createRes.statusCode, 201, 'should accept model with trailing slash (stripped)');
+    const body = JSON.parse(createRes.body);
+    assert.equal(body.cat.defaultModel, 'claude-opus-4-6', 'trailing slash should be stripped');
+  });
+
+  it('POST /api/cats rejects pure-slash model name', async () => {
+    const projectRoot = createProjectRoot();
+    process.env.CAT_TEMPLATE_PATH = join(projectRoot, 'cat-template.json');
+
+    const { createProviderProfile } = await import('./helpers/create-test-account.js');
+    await createProviderProfile(projectRoot, {
+      displayName: 'Anthropic Key',
+      authType: 'api_key',
+      protocol: 'anthropic',
+      baseUrl: 'https://api.anthropic.com',
+      apiKey: 'sk-test-anthropic',
+      models: ['claude-opus-4-6'],
+    });
+
+    const Fastify = (await import('fastify')).default;
+    const { catsRoutes } = await import('../dist/routes/cats.js');
+
+    const app = Fastify();
+    await app.register(catsRoutes);
+
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/cats',
+      headers: {
+        'content-type': 'application/json',
+        'x-cat-cafe-user': 'codex',
+      },
+      body: JSON.stringify({
+        catId: 'runtime-pure-slash',
+        name: '纯斜杠测试猫',
+        displayName: '纯斜杠测试猫',
+        avatar: '/avatars/test.png',
+        color: { primary: '#ff0000', secondary: '#ffcccc' },
+        mentionPatterns: ['@pure-slash'],
+        roleDescription: '测试用',
+        client: 'anthropic',
+        providerProfileId: 'anthropic-key',
+        defaultModel: '/',
+      }),
+    });
+
+    assert.equal(createRes.statusCode, 400, 'pure slash model should be rejected');
+  });
+
   it('POST /api/cats opencode+api_key: provider/model is primary, ocProviderName is legacy fallback', async () => {
     const projectRoot = createProjectRoot();
     process.env.CAT_TEMPLATE_PATH = join(projectRoot, 'cat-template.json');
@@ -778,7 +915,7 @@ describe('cats routes runtime CRUD', { concurrency: false }, () => {
     // Regression test for: ocProviderName=openrouter + defaultModel=z-ai/glm-4.7
     // The model's first segment "z-ai" is NOT the provider prefix — it is the
     // model's namespace within OpenRouter. stripOwnProviderPrefix must keep it.
-    const { generateOpenCodeRuntimeConfig } = await import(
+    const { deriveOpenCodeApiType, generateOpenCodeRuntimeConfig } = await import(
       '../dist/domains/cats/services/agents/providers/opencode-config-template.js'
     );
 
@@ -842,13 +979,16 @@ describe('cats routes runtime CRUD', { concurrency: false }, () => {
     );
   });
 
-  it('F189 P1 regression: custom provider without explicit protocol defaults to openai adapter', () => {
+  it('F189 P1 regression: custom provider without explicit protocol defaults to openai adapter', async () => {
     // Regression: effectiveProtocol defaults to 'anthropic' for all opencode providers,
     // but apiType in the F189 block should only honor an EXPLICIT account protocol.
     // Custom providers like maas/deepseek without protocol must get 'openai' adapter.
     // When explicit protocol IS set, it takes full precedence over ocProviderName heuristic.
+    // #291: Uses production deriveOpenCodeApiType instead of inline simulation.
+    const { deriveOpenCodeApiType } = await import(
+      '../dist/domains/cats/services/agents/providers/opencode-config-template.js'
+    );
 
-    // Simulate the fixed logic: explicit protocol first, then ocProviderName fallback
     const scenarios = [
       // No explicit protocol → fall back to ocProviderName
       { protocol: undefined, ocProviderName: 'maas', expected: 'openai' },
@@ -859,6 +999,9 @@ describe('cats routes runtime CRUD', { concurrency: false }, () => {
       { protocol: 'anthropic', ocProviderName: 'anthropic', expected: 'anthropic' },
       { protocol: 'google', ocProviderName: 'custom-gemini', expected: 'google' },
       { protocol: 'openai', ocProviderName: 'openrouter', expected: 'openai' },
+      // openai-responses protocol (#291)
+      { protocol: 'openai-responses', ocProviderName: 'custom', expected: 'openai-responses' },
+      { protocol: 'openai-responses', ocProviderName: undefined, expected: 'openai-responses' },
       // Conflict: explicit protocol MUST override ocProviderName
       { protocol: 'openai', ocProviderName: 'anthropic', expected: 'openai' },
       { protocol: 'openai', ocProviderName: 'google', expected: 'openai' },
@@ -866,18 +1009,7 @@ describe('cats routes runtime CRUD', { concurrency: false }, () => {
     ];
 
     for (const { protocol, ocProviderName, expected } of scenarios) {
-      const explicitProtocol = protocol;
-      const apiType = explicitProtocol
-        ? explicitProtocol === 'anthropic'
-          ? 'anthropic'
-          : explicitProtocol === 'google'
-            ? 'google'
-            : 'openai'
-        : ocProviderName === 'anthropic'
-          ? 'anthropic'
-          : ocProviderName === 'google'
-            ? 'google'
-            : 'openai';
+      const apiType = deriveOpenCodeApiType(protocol, ocProviderName);
       assert.equal(apiType, expected, `protocol=${protocol}, ocProviderName=${ocProviderName} → ${expected}`);
     }
   });
