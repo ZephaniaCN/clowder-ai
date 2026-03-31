@@ -328,4 +328,52 @@ describe('useAgentMessages bubble merge prevention (Bug B)', () => {
     const appendToInv2 = mockAppendToMessage.mock.calls.filter(([id]) => id === 'msg-inv2');
     expect(appendToInv2).toHaveLength(0);
   });
+
+  it('P1 regression: explicit-invocationId callback must NOT overwrite invocationless bubble when currentKnownInvId is undefined', () => {
+    act(() => {
+      root.render(React.createElement(Harness));
+    });
+
+    // A newer invocationless bubble exists (invocation_created was missed)
+    const newerBubble = {
+      id: 'msg-newer',
+      type: 'assistant',
+      catId: 'opus',
+      content: 'Newer response',
+      isStreaming: true,
+      origin: 'stream',
+      extra: { stream: {} }, // no invocationId — invocation_created was missed
+      timestamp: Date.now(),
+    };
+    storeState.messages.push(newerBubble);
+    // currentKnownInvId is undefined — no invocation tracked
+    storeState.catInvocations = {};
+
+    // Activate the stream ref
+    act(() => {
+      captured?.handleAgentMessage({
+        type: 'text',
+        catId: 'opus',
+        content: 'Newer response',
+      });
+    });
+
+    vi.clearAllMocks();
+
+    // Old callback with explicit invocationId arrives
+    act(() => {
+      captured?.handleAgentMessage({
+        type: 'text',
+        catId: 'opus',
+        origin: 'callback',
+        content: 'Old callback response',
+        invocationId: 'inv-old',
+        messageId: 'stored-old-msg',
+      });
+    });
+
+    // Explicit-invocationId callback must NOT fall back to invocationless placeholder
+    const appendToNewer = mockAppendToMessage.mock.calls.filter(([id]) => id === 'msg-newer');
+    expect(appendToNewer).toHaveLength(0);
+  });
 });
