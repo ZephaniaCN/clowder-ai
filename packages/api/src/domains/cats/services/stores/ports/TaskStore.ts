@@ -212,25 +212,23 @@ export class TaskStore implements ITaskStore {
   private evictDoneIfNeeded(): void {
     if (this.tasks.size < this.maxTasks) return;
 
-    for (const [id, task] of this.tasks) {
-      if (task.status === 'done') {
-        this.deleteTask(id, task);
-        if (this.tasks.size < this.maxTasks) return;
-      }
-    }
-
-    if (this.tasks.size >= this.maxTasks) {
-      for (const [id, task] of this.tasks) {
-        if (this.isProtectedFromFallbackEviction(task)) continue;
-        this.deleteTask(id, task);
-        return;
-      }
-    }
+    if (this.evictOldestTask((task) => task.status === 'done')) return;
+    if (this.evictOldestTask((task) => !this.isProtectedFromFallbackEviction(task))) return;
+    this.evictOldestTask(() => true);
   }
 
   private deleteTask(taskId: string, task?: TaskItem): void {
     if (task?.subjectKey) this.subjectIndex.delete(task.subjectKey);
     this.tasks.delete(taskId);
+  }
+
+  private evictOldestTask(predicate: (task: TaskItem) => boolean): boolean {
+    for (const [id, task] of this.tasks) {
+      if (!predicate(task)) continue;
+      this.deleteTask(id, task);
+      return true;
+    }
+    return false;
   }
 
   private isProtectedFromFallbackEviction(task: TaskItem): boolean {

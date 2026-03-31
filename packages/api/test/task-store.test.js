@@ -192,6 +192,35 @@ describe('TaskStore', () => {
       assert.equal(store.get(workTasks[0].id), null);
     });
 
+    it('preserves the task cap when every stored task is an active pr_tracking task', () => {
+      const trackers = [];
+      for (let i = 0; i < 5; i++) {
+        trackers.push(
+          store.upsertBySubject(
+            makeInput({
+              kind: 'pr_tracking',
+              subjectKey: `pr:owner/repo#${i}`,
+              title: `Track owner/repo#${i}`,
+            }),
+          ),
+        );
+      }
+
+      const replacement = store.upsertBySubject(
+        makeInput({
+          kind: 'pr_tracking',
+          subjectKey: 'pr:owner/repo#999',
+          title: 'Track owner/repo#999',
+        }),
+      );
+
+      assert.equal(store.size, 5);
+      assert.equal(store.get(trackers[0].id), null);
+      assert.equal(store.getBySubject('pr:owner/repo#0'), null);
+      assert.equal(store.get(replacement.id)?.id, replacement.id);
+      assert.equal(store.getBySubject('pr:owner/repo#999')?.id, replacement.id);
+    });
+
     it('evicts oldest task if no done tasks available', () => {
       // Fill to capacity (all todo)
       const tasks = [];
