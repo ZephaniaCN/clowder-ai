@@ -276,10 +276,14 @@ export class RedisTaskStore implements ITaskStore {
     for (const task of tasks) {
       pipeline.del(TaskKeys.detail(task.id));
       if (task.kind) pipeline.zrem(TaskKeys.kind(task.kind), task.id);
-      if (task.subjectKey) pipeline.del(TaskKeys.subject(task.subjectKey));
     }
     pipeline.del(key);
     await pipeline.exec();
+    for (const task of tasks) {
+      if (task.subjectKey) {
+        await this.compareAndDeleteSubject(task.subjectKey, task.id);
+      }
+    }
 
     return ids.length;
   }

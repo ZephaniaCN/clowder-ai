@@ -100,7 +100,9 @@ export function SchedulePanel() {
       }
       setExpandedId(taskId);
       try {
-        const res = await apiFetch(`/api/schedule/tasks/${encodeURIComponent(taskId)}/runs?limit=5`);
+        const params =
+          scope === 'current-thread' && currentThreadId ? `&threadId=${encodeURIComponent(currentThreadId)}` : '';
+        const res = await apiFetch(`/api/schedule/tasks/${encodeURIComponent(taskId)}/runs?limit=5${params}`);
         if (res.ok) {
           const json = await res.json();
           setRunHistory(json.runs ?? []);
@@ -109,7 +111,7 @@ export function SchedulePanel() {
         setRunHistory([]);
       }
     },
-    [expandedId],
+    [currentThreadId, expandedId, scope],
   );
 
   /** AC-H4: toggle pause/resume for any task — routes to correct API by source */
