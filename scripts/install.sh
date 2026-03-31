@@ -535,6 +535,24 @@ fi
 resolve_project_dir
 ok "Source tree: $PROJECT_DIR"
 
+# Preflight network check — fail early before installer-managed downloads.
+if [[ "$SKIP_PREFLIGHT" != true && -f "$PROJECT_DIR/scripts/preflight.sh" ]]; then
+    preflight_args=()
+    [[ -n "$NPM_REGISTRY" ]] && preflight_args+=("--registry=$NPM_REGISTRY")
+    preflight_args+=("--timeout=3")
+    if ! bash "$PROJECT_DIR/scripts/preflight.sh" "${preflight_args[@]}"; then
+        warn "Preflight detected unreachable endpoints (see above)."
+        warn "Install may fail. Fix the issues above or use --skip-preflight to bypass."
+        if [[ "$HAS_TTY" == true ]]; then
+            tty_read "  Continue anyway? [y/N] " _pf_continue
+            [[ "$_pf_continue" =~ ^[Yy] ]] || { fail "Aborted by user"; exit 1; }
+        else
+            fail "Non-interactive mode — aborting. Use --skip-preflight to force."
+            exit 1
+        fi
+    fi
+fi
+
 # ── [2/9] Install system dependencies ──────────────────────
 step "[2/9] Checking system dependencies / 检测系统依赖..."
 NEED_PKGS=()
@@ -653,24 +671,6 @@ fi
 step "[5/9] Preparing current repo / 准备当前仓库..."
 cd "$PROJECT_DIR"
 ok "Using project: $PROJECT_DIR"
-
-# Preflight network check — warn about unreachable endpoints before pnpm install
-if [[ "$SKIP_PREFLIGHT" != true && -f "$PROJECT_DIR/scripts/preflight.sh" ]]; then
-    preflight_args=()
-    [[ -n "$NPM_REGISTRY" ]] && preflight_args+=("--registry=$NPM_REGISTRY")
-    preflight_args+=("--timeout=3")
-    if ! bash "$PROJECT_DIR/scripts/preflight.sh" "${preflight_args[@]}"; then
-        warn "Preflight detected unreachable endpoints (see above)."
-        warn "Install may fail. Fix the issues above or use --skip-preflight to bypass."
-        if [[ "$HAS_TTY" == true ]]; then
-            tty_read "  Continue anyway? [y/N] " _pf_continue
-            [[ "$_pf_continue" =~ ^[Yy] ]] || { fail "Aborted by user"; exit 1; }
-        else
-            fail "Non-interactive mode — aborting. Use --skip-preflight to force."
-            exit 1
-        fi
-    fi
-fi
 
 pnpm_install_with_fallback || { fail "pnpm install failed in $PROJECT_DIR"; exit 1; }
 ok "Packages installed"
