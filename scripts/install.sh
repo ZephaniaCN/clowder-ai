@@ -999,8 +999,9 @@ elif [[ -f .env.example ]]; then
 else fail ".env.example not found in $PROJECT_DIR"; exit 1
 fi
 # Write collected auth config + Docker detection
-for key in "${ENV_DELETE_KEYS[@]}"; do delete_env_key "$key"; done
-for i in "${!ENV_KEYS[@]}"; do write_env_key "${ENV_KEYS[$i]}" "${ENV_VALUES[$i]}"; done
+# Bash <4.4 treats empty arrays as unbound under set -u; guard with ${arr[@]+"${arr[@]}"}.
+for key in ${ENV_DELETE_KEYS[@]+"${ENV_DELETE_KEYS[@]}"}; do delete_env_key "$key"; done
+for i in ${ENV_KEYS[@]+"${!ENV_KEYS[@]}"}; do write_env_key "${ENV_KEYS[$i]}" "${ENV_VALUES[$i]}"; done
 [[ ${#ENV_KEYS[@]} -gt 0 ]] && ok "Auth config written to .env"
 # Auto-detect Docker: only set host default on a freshly generated .env.
 maybe_write_docker_api_host
