@@ -492,6 +492,41 @@ describe('RedisTaskStore unit behavior', () => {
     assert.deepEqual(kindIds, [externalTaskId]);
   });
 
+  it('caps retries when subject lookup keeps racing to null', async () => {
+    const { RedisTaskStore } = await import('../dist/domains/cats/services/stores/redis/RedisTaskStore.js');
+    const { TaskKeys } = await import('../dist/domains/cats/services/stores/redis-keys/task-keys.js');
+    const redis = new FakeRedisForTaskStore();
+    const store = new RedisTaskStore(redis, { ttlSeconds: 60 });
+
+    let subjectGetCalls = 0;
+    redis.setnx = async () => 0;
+    redis.get = async (key) => {
+      if (key !== TaskKeys.subject('pr:owner/repo#125')) return null;
+      subjectGetCalls += 1;
+      if (subjectGetCalls > 5) {
+        throw new Error('test breaker: subject lookup retry never stopped');
+      }
+      return null;
+    };
+
+    await assert.rejects(
+      () =>
+        store.upsertBySubject({
+          kind: 'pr_tracking',
+          subjectKey: 'pr:owner/repo#125',
+          threadId: 'thread-null-race',
+          title: 'PR tracking: owner/repo#125',
+          why: 'track pr',
+          createdBy: 'opus',
+        }),
+      /subject lookup kept returning null/i,
+    );
+
+    assert.equal(subjectGetCalls, 4);
+    const kindIds = await redis.zrange(TaskKeys.kind('pr_tracking'), 0, -1);
+    assert.deepEqual(kindIds, []);
+  });
+
   it('recomputes thread TTL after deleting the last active pr_tracking task', async () => {
     const { RedisTaskStore } = await import('../dist/domains/cats/services/stores/redis/RedisTaskStore.js');
     const { TaskKeys } = await import('../dist/domains/cats/services/stores/redis-keys/task-keys.js');

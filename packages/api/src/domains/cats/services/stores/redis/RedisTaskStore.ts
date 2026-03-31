@@ -20,6 +20,8 @@ import type { ITaskStore } from '../ports/TaskStore.js';
 import { TaskKeys } from '../redis-keys/task-keys.js';
 
 const DEFAULT_TTL = 30 * 24 * 60 * 60; // 30 days
+const MAX_SUBJECT_LOOKUP_NULL_RETRIES = 3;
+const MAX_MISSING_TASK_RETRIES = 3;
 
 export class RedisTaskStore implements ITaskStore {
   private readonly redis: RedisClient;
@@ -77,10 +79,14 @@ export class RedisTaskStore implements ITaskStore {
   }
 
   async upsertBySubject(input: CreateTaskInput): Promise<TaskItem> {
-    return this.upsertBySubjectInternal(input, 0);
+    return this.upsertBySubjectInternal(input, 0, 0);
   }
 
-  private async upsertBySubjectInternal(input: CreateTaskInput, missingTaskRetries: number): Promise<TaskItem> {
+  private async upsertBySubjectInternal(
+    input: CreateTaskInput,
+    missingTaskRetries: number,
+    subjectLookupNullRetries: number,
+  ): Promise<TaskItem> {
     const sk = input.subjectKey;
     if (!sk) return this.create(input);
 
@@ -115,15 +121,20 @@ export class RedisTaskStore implements ITaskStore {
     const existingId = await this.redis.get(TaskKeys.subject(sk));
     if (!existingId) {
       // Another worker may have claimed/released/reclaimed the slot between SETNX and GET.
-      // Retry the atomic upsert flow instead of blindly creating a duplicate task hash.
-      return this.upsertBySubjectInternal(input, missingTaskRetries);
+      // Retry the atomic upsert flow instead of blindly creating a duplicate task hash,
+      // but do not spin forever if the subject lookup keeps racing to null.
+      if (subjectLookupNullRetries >= MAX_SUBJECT_LOOKUP_NULL_RETRIES) {
+        throw new Error(`RedisTaskStore upsertBySubject: subject lookup kept returning null for ${sk}`);
+      }
+      await this.waitForInFlightTaskWrite();
+      return this.upsertBySubjectInternal(input, missingTaskRetries, subjectLookupNullRetries + 1);
     }
 
     const existing = await this.get(existingId);
     if (!existing) {
-      if (missingTaskRetries < 3) {
+      if (missingTaskRetries < MAX_MISSING_TASK_RETRIES) {
         await this.waitForInFlightTaskWrite();
-        return this.upsertBySubjectInternal(input, missingTaskRetries + 1);
+        return this.upsertBySubjectInternal(input, missingTaskRetries + 1, 0);
       }
       // Orphaned subject key — CAS overwrite: only claim if value still matches stale ID
       const won = await this.redis.eval(
@@ -135,7 +146,7 @@ export class RedisTaskStore implements ITaskStore {
       );
       if (!won) {
         // Another process already fixed the orphan — retry
-        return this.upsertBySubjectInternal(input, 0);
+        return this.upsertBySubjectInternal(input, 0, 0);
       }
       const task: TaskItem = {
         id: newId,
