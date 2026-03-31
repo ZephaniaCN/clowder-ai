@@ -555,6 +555,54 @@ describe('RedisTaskStore unit behavior', () => {
     assert.equal(redis.ttls.get(TaskKeys.thread('thread-delete')), 60);
   });
 
+  it('does not delete a repaired subject mapping when deleting a task', async () => {
+    const { RedisTaskStore } = await import('../dist/domains/cats/services/stores/redis/RedisTaskStore.js');
+    const { TaskKeys } = await import('../dist/domains/cats/services/stores/redis-keys/task-keys.js');
+    const redis = new FakeRedisForTaskStore();
+    const store = new RedisTaskStore(redis, { ttlSeconds: 60 });
+
+    const staleTask = await store.create({
+      kind: 'pr_tracking',
+      subjectKey: 'pr:owner/repo#500',
+      threadId: 'thread-delete-race',
+      title: 'PR tracking: owner/repo#500',
+      why: 'track pr',
+      createdBy: 'opus',
+    });
+
+    const freshTaskId = 'task-fresh-delete';
+    redis.hashes.set(TaskKeys.detail(freshTaskId), {
+      id: freshTaskId,
+      kind: 'pr_tracking',
+      threadId: 'thread-delete-race',
+      subjectKey: 'pr:owner/repo#500',
+      title: 'PR tracking: owner/repo#500',
+      ownerCatId: '',
+      status: 'todo',
+      why: 'track pr',
+      createdBy: 'opus',
+      createdAt: '2',
+      updatedAt: '2',
+      userId: '',
+    });
+
+    const originalDel = redis.del.bind(redis);
+    let repaired = false;
+    redis.del = async (key) => {
+      if (key === TaskKeys.detail(staleTask.id) && !repaired) {
+        repaired = true;
+        redis.strings.set(TaskKeys.subject('pr:owner/repo#500'), freshTaskId);
+      }
+      return originalDel(key);
+    };
+
+    const deleted = await store.delete(staleTask.id);
+    assert.equal(deleted, true);
+
+    const bySubject = await store.getBySubject('pr:owner/repo#500');
+    assert.equal(bySubject?.id, freshTaskId);
+  });
+
   it('retries when the claimed task hash is temporarily missing before treating it as orphan', async () => {
     const { RedisTaskStore } = await import('../dist/domains/cats/services/stores/redis/RedisTaskStore.js');
     const { TaskKeys } = await import('../dist/domains/cats/services/stores/redis-keys/task-keys.js');
