@@ -116,6 +116,15 @@ export class ReviewRouter {
       };
     }
 
+    if (tracking.status === 'done') {
+      log.info(`[ReviewRouter] Skipping done PR tracking task: ${event.repository}#${event.prNumber}`);
+      await processedEmailStore.markProcessed(event.emailUid);
+      return {
+        kind: 'skipped',
+        reason: `Tracking entry for PR ${event.repository}#${event.prNumber} is done`,
+      };
+    }
+
     // --- PR-level atomic dedup (only for registered PRs; Cloud Codex P1-2) ---
     // Covers concurrent race (two events for same PR dispatched simultaneously).
     // Must happen AFTER tracking check so unregistered PRs don't claim the window

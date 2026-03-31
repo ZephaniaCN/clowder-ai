@@ -318,4 +318,36 @@ describe('RedisTaskStore unit behavior', () => {
     const tasks = await store.listByThread('thread-1');
     assert.ok(tasks.some((task) => task.kind === 'pr_tracking'));
   });
+
+  it('clears stale subject and kind indexes when the task hash has expired', async () => {
+    const { RedisTaskStore } = await import('../dist/domains/cats/services/stores/redis/RedisTaskStore.js');
+    const { TaskKeys } = await import('../dist/domains/cats/services/stores/redis-keys/task-keys.js');
+    const redis = new FakeRedisForTaskStore();
+    const store = new RedisTaskStore(redis, { ttlSeconds: 60 });
+
+    const task = await store.create({
+      kind: 'pr_tracking',
+      subjectKey: 'pr:owner/repo#77',
+      threadId: 'thread-7',
+      title: 'PR tracking: owner/repo#77',
+      why: 'track pr',
+      createdBy: 'opus',
+    });
+
+    redis.hashes.delete(TaskKeys.detail(task.id));
+
+    const bySubject = await store.getBySubject('pr:owner/repo#77');
+    assert.equal(bySubject, null);
+    assert.equal(redis.strings.get(TaskKeys.subject('pr:owner/repo#77')), undefined);
+
+    const byKind = await store.listByKind('pr_tracking');
+    assert.deepEqual(byKind, []);
+    const remainingKindIds = await redis.zrange(TaskKeys.kind('pr_tracking'), 0, -1);
+    assert.deepEqual(remainingKindIds, []);
+
+    const byThread = await store.listByThread('thread-7');
+    assert.deepEqual(byThread, []);
+    const remainingThreadIds = await redis.zrange(TaskKeys.thread('thread-7'), 0, -1);
+    assert.deepEqual(remainingThreadIds, []);
+  });
 });

@@ -70,7 +70,10 @@ export class RedisTaskStore implements ITaskStore {
   async getBySubject(subjectKey: string): Promise<TaskItem | null> {
     const taskId = await this.redis.get(TaskKeys.subject(subjectKey));
     if (!taskId) return null;
-    return this.get(taskId);
+    const task = await this.get(taskId);
+    if (task) return task;
+    await this.redis.del(TaskKeys.subject(subjectKey));
+    return null;
   }
 
   async upsertBySubject(input: CreateTaskInput): Promise<TaskItem> {
@@ -164,7 +167,7 @@ export class RedisTaskStore implements ITaskStore {
   async listByKind(kind: TaskKind): Promise<TaskItem[]> {
     const ids = await this.redis.zrange(TaskKeys.kind(kind), 0, -1);
     if (ids.length === 0) return [];
-    return this.fetchTasksByIds(ids);
+    return this.fetchTasksByIds(ids, { cleanupKey: TaskKeys.kind(kind) });
   }
 
   async patchAutomationState(taskId: string, patch: Partial<AutomationState>): Promise<TaskItem | null> {
@@ -216,7 +219,7 @@ export class RedisTaskStore implements ITaskStore {
   async listByThread(threadId: string): Promise<TaskItem[]> {
     const ids = await this.redis.zrange(TaskKeys.thread(threadId), 0, -1);
     if (ids.length === 0) return [];
-    return this.fetchTasksByIds(ids);
+    return this.fetchTasksByIds(ids, { cleanupKey: TaskKeys.thread(threadId) });
   }
 
   async delete(taskId: string): Promise<boolean> {
@@ -290,7 +293,7 @@ export class RedisTaskStore implements ITaskStore {
     }
   }
 
-  private async fetchTasksByIds(ids: string[]): Promise<TaskItem[]> {
+  private async fetchTasksByIds(ids: string[], options?: { cleanupKey?: string }): Promise<TaskItem[]> {
     const pipeline = this.redis.multi();
     for (const id of ids) {
       pipeline.hgetall(TaskKeys.detail(id));
@@ -299,12 +302,26 @@ export class RedisTaskStore implements ITaskStore {
     if (!results) return [];
 
     const tasks: TaskItem[] = [];
-    for (const [err, data] of results) {
+    const staleIds: string[] = [];
+    for (const [index, [err, data]] of results.entries()) {
       if (err || !data || typeof data !== 'object') continue;
       const d = data as Record<string, string>;
-      if (!d.id) continue;
+      if (!d.id) {
+        staleIds.push(ids[index] ?? '');
+        continue;
+      }
       tasks.push(this.hydrateTask(d));
     }
+
+    if (options?.cleanupKey && staleIds.length > 0) {
+      const cleanup = this.redis.multi();
+      for (const staleId of staleIds) {
+        if (!staleId) continue;
+        cleanup.zrem(options.cleanupKey, staleId);
+      }
+      await cleanup.exec();
+    }
+
     return tasks;
   }
 

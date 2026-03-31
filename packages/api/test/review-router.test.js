@@ -279,6 +279,28 @@ describe('ReviewRouter', () => {
     });
   });
 
+  describe('done tracking skip', () => {
+    it('skips when the tracking task is already done', async () => {
+      const router = createRouter();
+      const tracking = await prTracking.register({
+        repoFullName: 'zts212653/cat-cafe',
+        prNumber: 42,
+        catId: 'opus',
+        threadId: 'thread-abc',
+        userId: 'user-1',
+      });
+      await prTracking.taskStore.update(tracking.id, { status: 'done' });
+
+      const result = await router.route(makeEvent());
+
+      assert.strictEqual(result.kind, 'skipped');
+      assert.ok(result.reason.includes('is done'));
+      assert.strictEqual(messageMock.messages.length, 0);
+      assert.strictEqual(processedEmailStore.isProcessed(1000), true);
+      assert.strictEqual(processedEmailStore.isPrRecentlyInvoked('zts212653/cat-cafe', 42), false);
+    });
+  });
+
   // ── Message content ──────────────────────────────────────────────
 
   describe('message content', () => {
