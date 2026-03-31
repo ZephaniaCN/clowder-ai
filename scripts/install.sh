@@ -23,6 +23,8 @@ use_registry() {
     # npm/pnpm respect these env vars for all operations in this session.
     export npm_config_registry="$reg" NPM_CONFIG_REGISTRY="$reg" PNPM_CONFIG_REGISTRY="$reg"
 }
+# Cross-platform CAT_CAFE_NPM_REGISTRY fallback (parity with install.ps1)
+[[ -z "$NPM_REGISTRY" && -n "${CAT_CAFE_NPM_REGISTRY:-}" ]] && NPM_REGISTRY="$CAT_CAFE_NPM_REGISTRY"
 [[ -n "$NPM_REGISTRY" ]] && use_registry "$NPM_REGISTRY"
 npm_global_install() {
     if [[ -n "$NPM_REGISTRY" ]]; then

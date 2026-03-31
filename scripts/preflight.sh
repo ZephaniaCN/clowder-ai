@@ -65,8 +65,8 @@ test_endpoint() {
 # ── resolve_registry: env > .npmrc > default ──────────────────
 resolve_registry() {
     [[ -n "$NPM_REGISTRY" ]] && { printf '%s' "$NPM_REGISTRY"; return; }
-    # Env vars (npm/pnpm convention)
-    for var in npm_config_registry NPM_CONFIG_REGISTRY PNPM_CONFIG_REGISTRY; do
+    # Env vars (npm/pnpm convention + cross-platform CAT_CAFE_NPM_REGISTRY)
+    for var in CAT_CAFE_NPM_REGISTRY npm_config_registry NPM_CONFIG_REGISTRY PNPM_CONFIG_REGISTRY; do
         local val="${!var:-}"
         [[ -n "$val" ]] && { printf '%s' "$val"; return; }
     done
