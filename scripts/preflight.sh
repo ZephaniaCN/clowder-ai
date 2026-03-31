@@ -94,19 +94,19 @@ scan_prebuild_packages() {
     #   better-sqlite3@12.6.2:
     #     dependencies:
     #       prebuild-install: 7.1.3
-    # We find package lines followed (within 5 lines) by prebuild-install.
+    # We parse header-to-header: if prebuild-install appears between two
+    # package headers, we output the package name.
     awk '
         /^  '\''?[a-zA-Z@][^ ]*@[0-9]/ {
+            if (found) print pkg
             pkg = $0; sub(/^  '\''?/, "", pkg); sub(/'\''?:$/, "", pkg)
             match(pkg, /@[0-9]/)
             pkg = substr(pkg, 1, RSTART - 1)
-            countdown = 6
+            found = 0
             next
         }
-        countdown > 0 {
-            countdown--
-            if (/prebuild-install/) { print pkg; pkg = ""; countdown = 0 }
-        }
+        /prebuild-install/ { found = 1 }
+        END { if (found) print pkg }
     ' "$LOCKFILE" | sort -u
 }
 

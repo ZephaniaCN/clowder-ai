@@ -89,24 +89,24 @@ function Get-PrebuildPackages {
     if (-not (Test-Path $Lockfile)) { return @() }
     $packages = @()
     $currentPkg = ""
-    $countdown = 0
+    $found = $false
     foreach ($line in (Get-Content $Lockfile)) {
         if ($line -match "^\s{2}'?([a-zA-Z@][^\s'(]+)@(\d[^:'(]*)'?") {
-            $fullName = $Matches[1]
-            $currentPkg = $fullName
-            $countdown = 6
+            # New package header — emit previous if it had prebuild-install
+            if ($found -and $currentPkg -and $currentPkg -ne "prebuild-install") {
+                $packages += $currentPkg
+            }
+            $currentPkg = $Matches[1]
+            $found = $false
             continue
         }
-        if ($countdown -gt 0) {
-            $countdown--
-            if ($line -match 'prebuild-install') {
-                if ($currentPkg -and $currentPkg -ne "prebuild-install") {
-                    $packages += $currentPkg
-                }
-                $currentPkg = ""
-                $countdown = 0
-            }
+        if ($line -match 'prebuild-install') {
+            $found = $true
         }
+    }
+    # Final block
+    if ($found -and $currentPkg -and $currentPkg -ne "prebuild-install") {
+        $packages += $currentPkg
     }
     return ($packages | Sort-Object -Unique)
 }
