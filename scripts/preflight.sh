@@ -88,8 +88,8 @@ scan_prebuild_packages() {
     #       prebuild-install: 7.1.3
     # We find package lines followed (within 5 lines) by prebuild-install.
     awk '
-        /^  [a-zA-Z@][^ ]*@[0-9]/ {
-            pkg = $0; sub(/^  /, "", pkg); sub(/:$/, "", pkg)
+        /^  '\''?[a-zA-Z@][^ ]*@[0-9]/ {
+            pkg = $0; sub(/^  '\''?/, "", pkg); sub(/'\''?:$/, "", pkg)
             match(pkg, /@[0-9]/)
             pkg = substr(pkg, 1, RSTART - 1)
             countdown = 6
