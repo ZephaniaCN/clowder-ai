@@ -200,11 +200,7 @@ test('linux: Claude installed via npm, not curl claude.ai', () => {
 });
 
 test('Gemini always installed via npm (no brew formula)', () => {
-  assert.match(
-    installScriptText,
-    /gemini\).*install_npm_cli.*Gemini/s,
-    'Gemini must always use npm install',
-  );
+  assert.match(installScriptText, /gemini\).*install_npm_cli.*Gemini/s, 'Gemini must always use npm install');
 });
 
 test('darwin redis install does not ping-gate after install', () => {
@@ -264,21 +260,9 @@ test('darwin brew shellenv persisted to login profile after recovery', () => {
 
 test('darwin PATH persistence covers both zsh and bash profiles', () => {
   // #174 P2: bash users must also get PATH additions
-  assert.match(
-    installScriptText,
-    /darwin_login_profiles\(\)/,
-    'must define darwin_login_profiles helper',
-  );
-  assert.match(
-    installScriptText,
-    /\.zprofile/,
-    'darwin_login_profiles must include zsh profile',
-  );
-  assert.match(
-    installScriptText,
-    /\.bash_profile/,
-    'darwin_login_profiles must include bash profile',
-  );
+  assert.match(installScriptText, /darwin_login_profiles\(\)/, 'must define darwin_login_profiles helper');
+  assert.match(installScriptText, /\.zprofile/, 'darwin_login_profiles must include zsh profile');
+  assert.match(installScriptText, /\.bash_profile/, 'darwin_login_profiles must include bash profile');
   assert.match(
     installScriptText,
     /\.profile/,
