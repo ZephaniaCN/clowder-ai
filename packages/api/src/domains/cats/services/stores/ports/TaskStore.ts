@@ -10,6 +10,41 @@ import type { AutomationState, CreateTaskInput, TaskItem, TaskKind, UpdateTaskIn
 import { generateSortableId } from './MessageStore.js';
 
 const MAX_TASKS = 500;
+export const SUBJECT_OWNERSHIP_CONFLICT_CODE = 'TASK_SUBJECT_OWNERSHIP_CONFLICT';
+
+export function createSubjectOwnershipConflict(
+  subjectKey: string,
+  ownerUserId: string,
+  requestedUserId: string,
+): Error & {
+  code: typeof SUBJECT_OWNERSHIP_CONFLICT_CODE;
+  subjectKey: string;
+  ownerUserId: string;
+  requestedUserId: string;
+} {
+  const error = new Error(`Subject ${subjectKey} is already owned by another user`) as Error & {
+    code: typeof SUBJECT_OWNERSHIP_CONFLICT_CODE;
+    subjectKey: string;
+    ownerUserId: string;
+    requestedUserId: string;
+  };
+  error.code = SUBJECT_OWNERSHIP_CONFLICT_CODE;
+  error.subjectKey = subjectKey;
+  error.ownerUserId = ownerUserId;
+  error.requestedUserId = requestedUserId;
+  return error;
+}
+
+export function isSubjectOwnershipConflictError(
+  error: unknown,
+): error is Error & { code: typeof SUBJECT_OWNERSHIP_CONFLICT_CODE } {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: string }).code === SUBJECT_OWNERSHIP_CONFLICT_CODE
+  );
+}
 
 /**
  * Common interface for task stores (in-memory and Redis).
@@ -98,6 +133,9 @@ export class TaskStore implements ITaskStore {
     if (existingId) {
       const existing = this.tasks.get(existingId);
       if (existing) {
+        if (existing.userId && input.userId && existing.userId !== input.userId) {
+          throw createSubjectOwnershipConflict(sk, existing.userId, input.userId);
+        }
         const updated: TaskItem = {
           ...existing,
           threadId: input.threadId,

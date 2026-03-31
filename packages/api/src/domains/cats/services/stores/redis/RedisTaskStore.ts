@@ -16,7 +16,7 @@
 import type { AutomationState, CatId, CreateTaskInput, TaskItem, TaskKind, UpdateTaskInput } from '@cat-cafe/shared';
 import type { RedisClient } from '@cat-cafe/shared/utils';
 import { generateSortableId } from '../ports/MessageStore.js';
-import type { ITaskStore } from '../ports/TaskStore.js';
+import { createSubjectOwnershipConflict, type ITaskStore } from '../ports/TaskStore.js';
 import { TaskKeys } from '../redis-keys/task-keys.js';
 
 const DEFAULT_TTL = 30 * 24 * 60 * 60; // 30 days
@@ -114,7 +114,10 @@ export class RedisTaskStore implements ITaskStore {
         automationState: input.automationState,
         userId: input.userId,
       };
-      await this.writeTask(task, { syncSubject: false });
+      const written = await this.writeTask(task, { syncSubject: false, requireSubjectOwner: true });
+      if (!written) {
+        return this.upsertBySubjectInternal(input, 0, 0);
+      }
       return task;
     }
 
@@ -164,8 +167,15 @@ export class RedisTaskStore implements ITaskStore {
         automationState: input.automationState,
         userId: input.userId,
       };
-      await this.writeTask(task, { syncSubject: false });
+      const written = await this.writeTask(task, { syncSubject: false, requireSubjectOwner: true });
+      if (!written) {
+        return this.upsertBySubjectInternal(input, 0, 0);
+      }
       return task;
+    }
+
+    if (existing.userId && input.userId && existing.userId !== input.userId) {
+      throw createSubjectOwnershipConflict(sk, existing.userId, input.userId);
     }
 
     const updated: TaskItem = {
@@ -294,17 +304,46 @@ export class RedisTaskStore implements ITaskStore {
 
   // --- private helpers ---
 
-  private async writeTask(task: TaskItem, options?: { syncSubject?: boolean }): Promise<void> {
+  private async writeTask(
+    task: TaskItem,
+    options?: { syncSubject?: boolean; requireSubjectOwner?: boolean },
+  ): Promise<boolean> {
+    const subjectKey = task.subjectKey;
+    const shouldVerifyOwnership = Boolean(options?.requireSubjectOwner && subjectKey);
     const key = TaskKeys.detail(task.id);
+
+    if (shouldVerifyOwnership) {
+      const subjectIndexKey = TaskKeys.subject(subjectKey!);
+      await this.redis.watch(subjectIndexKey);
+      const ownerTaskId = await this.redis.get(subjectIndexKey);
+      if (ownerTaskId !== task.id) {
+        await this.redis.unwatch();
+        return false;
+      }
+    }
+
     const pipeline = this.redis.multi();
     pipeline.hset(key, this.serializeTask(task));
     pipeline.zadd(TaskKeys.thread(task.threadId), String(task.createdAt), task.id);
     pipeline.zadd(TaskKeys.kind(task.kind), String(task.createdAt), task.id);
-    if ((options?.syncSubject ?? true) && task.subjectKey) {
-      pipeline.set(TaskKeys.subject(task.subjectKey), task.id);
+    if ((options?.syncSubject ?? true) && subjectKey) {
+      pipeline.set(TaskKeys.subject(subjectKey), task.id);
     }
-    await pipeline.exec();
+    const result = await pipeline.exec();
+    if (!result) {
+      return false;
+    }
     await this.applyTtl(task);
+
+    if (shouldVerifyOwnership) {
+      const ownerTaskId = await this.redis.get(TaskKeys.subject(subjectKey!));
+      if (ownerTaskId !== task.id) {
+        await this.removeTaskArtifacts(task);
+        return false;
+      }
+    }
+
+    return true;
   }
 
   private async waitForInFlightTaskWrite(): Promise<void> {
@@ -347,6 +386,15 @@ export class RedisTaskStore implements ITaskStore {
       TaskKeys.subject(subjectKey),
       staleTaskId,
     );
+  }
+
+  private async removeTaskArtifacts(task: TaskItem): Promise<void> {
+    const cleanup = this.redis.multi();
+    cleanup.del(TaskKeys.detail(task.id));
+    cleanup.zrem(TaskKeys.thread(task.threadId), task.id);
+    cleanup.zrem(TaskKeys.kind(task.kind), task.id);
+    await cleanup.exec();
+    await this.applyThreadTtl(task.threadId);
   }
 
   private mergeAutomationState(

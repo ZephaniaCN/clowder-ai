@@ -786,7 +786,7 @@ describe('RedisTaskStore unit behavior', () => {
     assert.equal(updated?.automationState?.conflict?.mergeState, 'CONFLICTING');
   });
 
-  it('does not restore a stale subject owner after CAS takeover', async () => {
+  it('does not write a stale claimed task after CAS takeover', async () => {
     const { RedisTaskStore } = await import('../dist/domains/cats/services/stores/redis/RedisTaskStore.js');
     const { TaskKeys } = await import('../dist/domains/cats/services/stores/redis-keys/task-keys.js');
     const redis = new FakeRedisForTaskStore();
@@ -818,6 +818,7 @@ describe('RedisTaskStore unit behavior', () => {
     while (!redis.strings.get(TaskKeys.subject('pr:owner/repo#801'))) {
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
+    const firstClaimedTaskId = redis.strings.get(TaskKeys.subject('pr:owner/repo#801'));
 
     const secondTask = await store.upsertBySubject({
       kind: 'pr_tracking',
@@ -831,9 +832,16 @@ describe('RedisTaskStore unit behavior', () => {
     releaseFirstWrite();
     const firstTask = await first;
 
-    assert.notEqual(firstTask.id, secondTask.id);
+    assert.equal(firstTask.id, secondTask.id, 'stale claimer should resolve to the current subject owner');
     const bySubject = await store.getBySubject('pr:owner/repo#801');
     assert.equal(bySubject?.id, secondTask.id);
-    assert.equal(bySubject?.threadId, 'thread-b');
+
+    const byKind = await store.listByKind('pr_tracking');
+    assert.deepEqual(
+      byKind.map((task) => task.id),
+      [secondTask.id],
+      'stale claimer must not leave a zombie pr_tracking row behind',
+    );
+    assert.equal(await store.get(firstClaimedTaskId), null, 'stale claimed task hash must not be persisted');
   });
 });

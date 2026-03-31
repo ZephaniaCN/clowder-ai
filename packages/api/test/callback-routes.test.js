@@ -2091,6 +2091,65 @@ describe('Callback Routes', () => {
     assert.equal(entry.threadId, 'thread-A');
   });
 
+  test('POST register-pr-tracking converts atomic store ownership conflicts into 409', async () => {
+    taskStore = {
+      getBySubject() {
+        return null;
+      },
+      async upsertBySubject(input) {
+        if (input.userId === 'user-A') {
+          return {
+            id: 'task-user-a',
+            kind: 'pr_tracking',
+            subjectKey: 'pr:zts212653/cat-cafe#77',
+            threadId: 'thread-A',
+            title: 'PR tracking: zts212653/cat-cafe#77',
+            ownerCatId: 'opus',
+            status: 'todo',
+            why: 'track pr',
+            createdBy: 'opus',
+            createdAt: 1,
+            updatedAt: 1,
+            userId: 'user-A',
+          };
+        }
+        const error = new Error('subject ownership conflict');
+        error.code = 'TASK_SUBJECT_OWNERSHIP_CONFLICT';
+        throw error;
+      },
+    };
+
+    const app = await createApp();
+
+    const userA = registry.create('user-A', 'opus', 'thread-A');
+    const first = await app.inject({
+      method: 'POST',
+      url: '/api/callbacks/register-pr-tracking',
+      payload: {
+        invocationId: userA.invocationId,
+        callbackToken: userA.callbackToken,
+        repoFullName: 'zts212653/cat-cafe',
+        prNumber: 77,
+      },
+    });
+    assert.equal(first.statusCode, 200);
+
+    const userB = registry.create('user-B', 'codex', 'thread-B');
+    const second = await app.inject({
+      method: 'POST',
+      url: '/api/callbacks/register-pr-tracking',
+      payload: {
+        invocationId: userB.invocationId,
+        callbackToken: userB.callbackToken,
+        repoFullName: 'zts212653/cat-cafe',
+        prNumber: 77,
+      },
+    });
+
+    assert.equal(second.statusCode, 409, 'atomic ownership conflict must surface as 409');
+    assert.match(second.body, /already registered by another user/);
+  });
+
   test('POST register-pr-tracking allows re-register from same user (update thread)', async () => {
     const app = await createApp();
 

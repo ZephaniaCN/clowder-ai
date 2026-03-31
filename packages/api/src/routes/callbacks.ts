@@ -19,7 +19,7 @@ import type { IBacklogStore } from '../domains/cats/services/stores/ports/Backlo
 import type { DeliveryCursorStore } from '../domains/cats/services/stores/ports/DeliveryCursorStore.js';
 import type { IInvocationRecordStore } from '../domains/cats/services/stores/ports/InvocationRecordStore.js';
 import { hydrateReplyPreview, type IMessageStore } from '../domains/cats/services/stores/ports/MessageStore.js';
-import type { ITaskStore } from '../domains/cats/services/stores/ports/TaskStore.js';
+import { type ITaskStore, isSubjectOwnershipConflictError } from '../domains/cats/services/stores/ports/TaskStore.js';
 import type { IThreadStore, VotingStateV1 } from '../domains/cats/services/stores/ports/ThreadStore.js';
 import { canViewMessage } from '../domains/cats/services/stores/visibility.js';
 import { getVoiceBlockSynthesizer } from '../domains/cats/services/tts/VoiceBlockSynthesizer.js';
@@ -1030,26 +1030,26 @@ export const callbacksRoutes: FastifyPluginAsync<CallbackRoutesOptions> = async 
     }
 
     const subjectKey = `pr:${repoFullName}#${prNumber}`;
+    try {
+      const task = await taskStore.upsertBySubject({
+        kind: 'pr_tracking',
+        subjectKey,
+        threadId: record.threadId,
+        title: `PR tracking: ${repoFullName}#${prNumber}`,
+        ownerCatId: catId,
+        why: `Tracking PR ${repoFullName}#${prNumber} for review feedback, CI/CD, and conflict detection`,
+        createdBy: catId,
+        userId: record.userId,
+      });
 
-    // Cloud Codex P1-2: ownership protection — reject cross-user overwrites
-    const existing = await taskStore.getBySubject(subjectKey);
-    if (existing && existing.userId !== record.userId) {
-      reply.status(409);
-      return { error: `PR ${repoFullName}#${prNumber} already registered by another user` };
+      return { status: 'ok', threadId: record.threadId, task };
+    } catch (error) {
+      if (isSubjectOwnershipConflictError(error)) {
+        reply.status(409);
+        return { error: `PR ${repoFullName}#${prNumber} already registered by another user` };
+      }
+      throw error;
     }
-
-    const task = await taskStore.upsertBySubject({
-      kind: 'pr_tracking',
-      subjectKey,
-      threadId: record.threadId,
-      title: `PR tracking: ${repoFullName}#${prNumber}`,
-      ownerCatId: catId,
-      why: `Tracking PR ${repoFullName}#${prNumber} for review feedback, CI/CD, and conflict detection`,
-      createdBy: catId,
-      userId: record.userId,
-    });
-
-    return { status: 'ok', threadId: record.threadId, task };
   });
 
   // F22: Rich block creation via MCP callback
