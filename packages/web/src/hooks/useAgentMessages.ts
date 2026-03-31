@@ -485,10 +485,14 @@ export function useAgentMessages() {
             // placeholder existed yet. Mark the invocation as replaced so that
             // late-arriving stream chunks for the same invocation are suppressed
             // instead of spawning a second bubble.
-            // Skip lock when strict callback match failed (hasExplicitInvocationId):
-            // the invocationId belongs to an older invocation and must not suppress
-            // stream chunks from the current (possibly unknown) invocation.
-            if (invocationId && !hasExplicitInvocationId) {
+            // For explicit-invocationId callbacks: only lock when provably same
+            // invocation (currentKnownInvId matches). When stale or ambiguous
+            // (currentKnownInvId undefined), skip — P1 stream freeze is worse
+            // than P2 duplicate bubble.
+            const shouldLockReplacement =
+              invocationId &&
+              (!hasExplicitInvocationId || getCurrentInvocationIdForCat(msg.catId) === msg.invocationId);
+            if (shouldLockReplacement) {
               replacedInvocationsRef.current.set(msg.catId, invocationId);
             }
           }
