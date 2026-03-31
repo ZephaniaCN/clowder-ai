@@ -77,33 +77,77 @@ export class RedisTaskStore implements ITaskStore {
     const sk = input.subjectKey;
     if (!sk) return this.create(input);
 
-    const existingId = await this.redis.get(TaskKeys.subject(sk));
-    if (existingId) {
-      const existing = await this.get(existingId);
-      if (existing) {
-        const now = Date.now();
-        const updated: TaskItem = {
-          ...existing,
-          threadId: input.threadId,
-          title: input.title,
-          ownerCatId: input.ownerCatId ?? existing.ownerCatId,
-          why: input.why,
-          userId: input.userId ?? existing.userId,
-          automationState: input.automationState ?? existing.automationState,
-          updatedAt: now,
-        };
+    // P1-1 fix: atomic claim via SETNX on subject index key.
+    // SETNX returns 1 if set (we own the slot), 0 if already occupied (update path).
+    const now = Date.now();
+    const newId = generateSortableId(now);
+    const claimed = await this.redis.setnx(TaskKeys.subject(sk), newId);
 
-        // If threadId changed, update thread index
-        if (existing.threadId !== input.threadId) {
-          await this.redis.zrem(TaskKeys.thread(existing.threadId), existing.id);
-        }
-
-        await this.writeTask(updated);
-        return updated;
-      }
+    if (claimed) {
+      // Won the race — create task with the pre-claimed ID
+      const task: TaskItem = {
+        id: newId,
+        kind: input.kind ?? 'work',
+        threadId: input.threadId,
+        subjectKey: sk,
+        title: input.title,
+        ownerCatId: input.ownerCatId ?? null,
+        status: 'todo',
+        why: input.why,
+        createdBy: input.createdBy,
+        createdAt: now,
+        updatedAt: now,
+        automationState: input.automationState,
+        userId: input.userId,
+      };
+      await this.writeTask(task);
+      return task;
     }
 
-    return this.create(input);
+    // Subject already claimed — read and update existing
+    const existingId = await this.redis.get(TaskKeys.subject(sk));
+    if (!existingId) return this.create(input); // deleted between SETNX and GET
+
+    const existing = await this.get(existingId);
+    if (!existing) {
+      // Orphaned subject key — overwrite and create fresh
+      await this.redis.set(TaskKeys.subject(sk), newId);
+      const task: TaskItem = {
+        id: newId,
+        kind: input.kind ?? 'work',
+        threadId: input.threadId,
+        subjectKey: sk,
+        title: input.title,
+        ownerCatId: input.ownerCatId ?? null,
+        status: 'todo',
+        why: input.why,
+        createdBy: input.createdBy,
+        createdAt: now,
+        updatedAt: now,
+        automationState: input.automationState,
+        userId: input.userId,
+      };
+      await this.writeTask(task);
+      return task;
+    }
+
+    const updated: TaskItem = {
+      ...existing,
+      threadId: input.threadId,
+      title: input.title,
+      ownerCatId: input.ownerCatId ?? existing.ownerCatId,
+      why: input.why,
+      userId: input.userId ?? existing.userId,
+      automationState: input.automationState ?? existing.automationState,
+      updatedAt: now,
+    };
+
+    if (existing.threadId !== input.threadId) {
+      await this.redis.zrem(TaskKeys.thread(existing.threadId), existing.id);
+    }
+
+    await this.writeTask(updated);
+    return updated;
   }
 
   async listByKind(kind: TaskKind): Promise<TaskItem[]> {

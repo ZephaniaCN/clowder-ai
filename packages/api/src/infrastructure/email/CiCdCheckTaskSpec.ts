@@ -43,9 +43,9 @@ export function createCiCdCheckTaskSpec(opts: CiCdCheckTaskSpecOptions): TaskSpe
     trigger: { type: 'interval', ms: opts.pollIntervalMs ?? 60_000 },
     admission: {
       async gate() {
-        // #320: Read from unified TaskStore
-        const tasks = await opts.taskStore.listByKind('pr_tracking');
-        const active = tasks.filter((t) => t.automationState?.ci?.enabled !== false);
+        // #320: Read from unified TaskStore — exclude done tasks (PR merged/closed)
+        const allTasks = await opts.taskStore.listByKind('pr_tracking');
+        const active = allTasks.filter((t) => t.status !== 'done' && t.automationState?.ci?.enabled !== false);
 
         if (active.length === 0) {
           return { run: false, reason: 'no active tracked PRs' };

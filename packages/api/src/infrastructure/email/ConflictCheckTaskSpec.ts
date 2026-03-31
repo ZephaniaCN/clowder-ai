@@ -43,8 +43,8 @@ export function createConflictCheckTaskSpec(opts: ConflictCheckTaskSpecOptions):
     trigger: { type: 'interval', ms: opts.pollIntervalMs ?? 5 * 60 * 1000 },
     admission: {
       async gate() {
-        // #320: Read from unified TaskStore
-        const tasks = await opts.taskStore.listByKind('pr_tracking');
+        // #320: Read from unified TaskStore — exclude done tasks (PR merged/closed)
+        const tasks = (await opts.taskStore.listByKind('pr_tracking')).filter((t) => t.status !== 'done');
         if (tasks.length === 0) {
           return { run: false, reason: 'no tracked PRs' };
         }

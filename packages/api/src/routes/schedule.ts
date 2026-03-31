@@ -71,9 +71,19 @@ export const scheduleRoutes: FastifyPluginAsync<ScheduleRoutesOptions> = async (
     threadSubjectKeys.add(`thread-${threadId}`);
     threadSubjectKeys.add(`thread:${threadId}`);
 
+    // P1-2 fix: don't rely solely on lastRun — query ledger for ANY matching run.
+    // A global task (e.g. cicd-check) has multiple runs across PRs; lastRun
+    // only reflects the most recent one, which may belong to a different thread.
+    const ledger = taskRunner.getLedger();
     const filtered = summaries.filter((s) => {
-      if (!s.lastRun) return false;
-      return threadSubjectKeys.has(s.lastRun.subject_key);
+      // Quick path: if lastRun matches, include immediately
+      if (s.lastRun && threadSubjectKeys.has(s.lastRun.subject_key)) return true;
+      // Slow path: check if ANY run for this task matches thread's subject keys
+      for (const sk of threadSubjectKeys) {
+        const runs = ledger.queryBySubject(s.id, sk, 1);
+        if (runs.length > 0) return true;
+      }
+      return false;
     });
 
     return { tasks: filtered };
