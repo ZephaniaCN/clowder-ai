@@ -171,6 +171,27 @@ describe('TaskStore', () => {
       assert.equal(store.get(tasks[0].id), null);
     });
 
+    it('does not evict active pr_tracking tasks during fallback oldest-task eviction', () => {
+      const tracker = store.upsertBySubject(
+        makeInput({
+          kind: 'pr_tracking',
+          subjectKey: 'pr:owner/repo#99',
+          title: 'Track owner/repo#99',
+        }),
+      );
+      const workTasks = [];
+      for (let i = 0; i < 4; i++) {
+        workTasks.push(store.create(makeInput({ title: `task-${i}` })));
+      }
+
+      store.create(makeInput({ title: 'new-task' }));
+
+      assert.equal(store.size, 5);
+      assert.equal(store.get(tracker.id)?.id, tracker.id);
+      assert.equal(store.getBySubject('pr:owner/repo#99')?.id, tracker.id);
+      assert.equal(store.get(workTasks[0].id), null);
+    });
+
     it('evicts oldest task if no done tasks available', () => {
       // Fill to capacity (all todo)
       const tasks = [];

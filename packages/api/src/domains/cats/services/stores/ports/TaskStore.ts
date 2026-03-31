@@ -214,19 +214,26 @@ export class TaskStore implements ITaskStore {
 
     for (const [id, task] of this.tasks) {
       if (task.status === 'done') {
-        if (task.subjectKey) this.subjectIndex.delete(task.subjectKey);
-        this.tasks.delete(id);
+        this.deleteTask(id, task);
         if (this.tasks.size < this.maxTasks) return;
       }
     }
 
     if (this.tasks.size >= this.maxTasks) {
-      const firstKey = this.tasks.keys().next().value;
-      if (firstKey) {
-        const task = this.tasks.get(firstKey);
-        if (task?.subjectKey) this.subjectIndex.delete(task.subjectKey);
-        this.tasks.delete(firstKey);
+      for (const [id, task] of this.tasks) {
+        if (this.isProtectedFromFallbackEviction(task)) continue;
+        this.deleteTask(id, task);
+        return;
       }
     }
+  }
+
+  private deleteTask(taskId: string, task?: TaskItem): void {
+    if (task?.subjectKey) this.subjectIndex.delete(task.subjectKey);
+    this.tasks.delete(taskId);
+  }
+
+  private isProtectedFromFallbackEviction(task: TaskItem): boolean {
+    return task.kind === 'pr_tracking' && task.status !== 'done';
   }
 }
