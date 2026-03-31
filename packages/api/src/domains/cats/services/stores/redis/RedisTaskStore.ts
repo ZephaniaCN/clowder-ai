@@ -146,6 +146,10 @@ export class RedisTaskStore implements ITaskStore {
       threadId: input.threadId,
       title: input.title,
       ownerCatId: input.ownerCatId ?? existing.ownerCatId,
+      status:
+        existing.kind === 'pr_tracking' && existing.status === 'done'
+          ? 'todo'
+          : existing.status,
       why: input.why,
       userId: input.userId ?? existing.userId,
       automationState: input.automationState ?? existing.automationState,
@@ -270,13 +274,22 @@ export class RedisTaskStore implements ITaskStore {
   private async applyTtl(task: TaskItem): Promise<void> {
     if (this.ttlSeconds === null) return;
     const key = TaskKeys.detail(task.id);
+    const threadKey = TaskKeys.thread(task.threadId);
 
     if (task.kind === 'pr_tracking' && task.status !== 'done') {
       // Active PR tracking tasks don't expire
       await this.redis.persist(key);
     } else {
       await this.redis.expire(key, this.ttlSeconds);
-      await this.redis.expire(TaskKeys.thread(task.threadId), this.ttlSeconds);
+    }
+
+    // A thread index shared with any active PR-tracking task must remain durable.
+    const threadTasks = await this.listByThread(task.threadId);
+    const hasActivePrTracking = threadTasks.some((item) => item.kind === 'pr_tracking' && item.status !== 'done');
+    if (hasActivePrTracking) {
+      await this.redis.persist(threadKey);
+    } else {
+      await this.redis.expire(threadKey, this.ttlSeconds);
     }
   }
 

@@ -8,7 +8,7 @@ import Database from 'better-sqlite3';
 import Fastify from 'fastify';
 
 describe('Schedule Routes', () => {
-  let app, db, ledger, runner;
+  let app, db, ledger, runner, taskStore;
   const noop = () => {};
   const silentLogger = { info: noop, error: noop };
 
@@ -18,10 +18,12 @@ describe('Schedule Routes', () => {
     const { RunLedger } = await import('../dist/infrastructure/scheduler/RunLedger.js');
     const { TaskRunnerV2 } = await import('../dist/infrastructure/scheduler/TaskRunnerV2.js');
     const { scheduleRoutes } = await import('../dist/routes/schedule.js');
+    const { TaskStore } = await import('../dist/domains/cats/services/stores/ports/TaskStore.js');
 
     applyMigrations(db);
     ledger = new RunLedger(db);
     runner = new TaskRunnerV2({ logger: silentLogger, ledger });
+    taskStore = new TaskStore();
 
     // Register test tasks
     runner.register({
@@ -54,6 +56,7 @@ describe('Schedule Routes', () => {
       state: { runLedger: 'sqlite' },
       outcome: { whenNoSignal: 'record' },
       enabled: () => true,
+      display: { label: 'CI/CD 检查', category: 'pr', subjectKind: 'pr' },
     });
 
     // Populate ledger with some runs
@@ -61,7 +64,7 @@ describe('Schedule Routes', () => {
     await runner.triggerNow('cicd-check');
 
     app = Fastify({ logger: false });
-    await app.register(scheduleRoutes, { taskRunner: runner });
+    await app.register(scheduleRoutes, { taskRunner: runner, taskStore });
     await app.ready();
   });
 
@@ -89,6 +92,49 @@ describe('Schedule Routes', () => {
       assert.equal(summary.lastRun.outcome, 'RUN_DELIVERED');
       assert.equal(summary.runStats.total, 1);
       assert.equal(summary.runStats.delivered, 1);
+    });
+
+    it('includes zero-run PR summaries for a thread that has tracked PRs', async () => {
+      runner.register({
+        id: 'review-feedback',
+        profile: 'poller',
+        trigger: { type: 'interval', ms: 60000 },
+        admission: { gate: async () => ({ run: false, reason: 'idle' }) },
+        run: { overlap: 'skip', timeoutMs: 5000, execute: async () => {} },
+        state: { runLedger: 'sqlite' },
+        outcome: { whenNoSignal: 'record' },
+        enabled: () => true,
+        display: { label: 'Review 反馈', category: 'pr', subjectKind: 'pr' },
+      });
+      taskStore.upsertBySubject({
+        kind: 'pr_tracking',
+        subjectKey: 'pr:owner/repo#42',
+        threadId: 'abc123',
+        title: 'PR tracking: owner/repo#42',
+        why: 'track pr',
+        createdBy: 'opus',
+      });
+
+      const res = await app.inject({ method: 'GET', url: '/api/schedule/tasks?threadId=abc123' });
+      assert.equal(res.statusCode, 200);
+      const body = JSON.parse(res.payload);
+      assert.ok(body.tasks.some((task) => task.id === 'review-feedback'));
+    });
+
+    it('does not leak cross-thread PR summaries via subjectKind fallback once a task has runs', async () => {
+      taskStore.upsertBySubject({
+        kind: 'pr_tracking',
+        subjectKey: 'pr:another/repo#7',
+        threadId: 'abc123',
+        title: 'PR tracking: another/repo#7',
+        why: 'track pr',
+        createdBy: 'opus',
+      });
+
+      const res = await app.inject({ method: 'GET', url: '/api/schedule/tasks?threadId=abc123' });
+      assert.equal(res.statusCode, 200);
+      const body = JSON.parse(res.payload);
+      assert.ok(!body.tasks.some((task) => task.id === 'cicd-check'));
     });
   });
 

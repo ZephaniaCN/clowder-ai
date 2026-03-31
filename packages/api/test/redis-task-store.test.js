@@ -10,6 +10,129 @@ import { assertRedisIsolationOrThrow, cleanupPrefixedRedisKeys } from './helpers
 
 const REDIS_URL = process.env.REDIS_URL;
 
+class FakeRedisForTaskStore {
+  constructor() {
+    this.hashes = new Map();
+    this.strings = new Map();
+    this.sortedSets = new Map();
+    this.ttls = new Map();
+  }
+
+  async hset(key, value) {
+    const existing = this.hashes.get(key) ?? {};
+    this.hashes.set(key, { ...existing, ...value });
+    return 1;
+  }
+
+  async hgetall(key) {
+    return this.hashes.get(key) ?? {};
+  }
+
+  async get(key) {
+    return this.strings.get(key) ?? null;
+  }
+
+  async set(key, value) {
+    this.strings.set(key, value);
+    return 'OK';
+  }
+
+  async setnx(key, value) {
+    if (this.strings.has(key)) return 0;
+    this.strings.set(key, value);
+    return 1;
+  }
+
+  async eval(script, _numKeys, key, ...args) {
+    if (script.includes("redis.call('set'")) {
+      const [expectedValue, nextValue] = args;
+      if ((this.strings.get(key) ?? null) !== expectedValue) return 0;
+      this.strings.set(key, nextValue);
+      return 1;
+    }
+    throw new Error(`Unsupported eval script: ${script}`);
+  }
+
+  async zadd(key, score, member) {
+    const set = this.sortedSets.get(key) ?? new Map();
+    set.set(member, Number(score));
+    this.sortedSets.set(key, set);
+    return 1;
+  }
+
+  async zrange(key, start, end) {
+    const set = this.sortedSets.get(key) ?? new Map();
+    const items = [...set.entries()]
+      .sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]))
+      .map(([member]) => member);
+    const normalizedEnd = end < 0 ? items.length + end + 1 : end + 1;
+    return items.slice(start, normalizedEnd);
+  }
+
+  async zrem(key, member) {
+    const set = this.sortedSets.get(key);
+    if (!set) return 0;
+    return set.delete(member) ? 1 : 0;
+  }
+
+  async del(key) {
+    let deleted = 0;
+    deleted += this.hashes.delete(key) ? 1 : 0;
+    deleted += this.strings.delete(key) ? 1 : 0;
+    deleted += this.sortedSets.delete(key) ? 1 : 0;
+    this.ttls.delete(key);
+    return deleted;
+  }
+
+  async expire(key, ttl) {
+    this.ttls.set(key, ttl);
+    return 1;
+  }
+
+  async persist(key) {
+    this.ttls.delete(key);
+    return 1;
+  }
+
+  multi() {
+    const ops = [];
+    const pipeline = {
+      hset: (key, value) => {
+        ops.push(() => this.hset(key, value));
+        return pipeline;
+      },
+      zadd: (key, score, member) => {
+        ops.push(() => this.zadd(key, score, member));
+        return pipeline;
+      },
+      set: (key, value) => {
+        ops.push(() => this.set(key, value));
+        return pipeline;
+      },
+      hgetall: (key) => {
+        ops.push(() => this.hgetall(key));
+        return pipeline;
+      },
+      zrem: (key, member) => {
+        ops.push(() => this.zrem(key, member));
+        return pipeline;
+      },
+      del: (key) => {
+        ops.push(() => this.del(key));
+        return pipeline;
+      },
+      exec: async () => {
+        const results = [];
+        for (const op of ops) {
+          results.push([null, await op()]);
+        }
+        return results;
+      },
+    };
+    return pipeline;
+  }
+}
+
 describe('RedisTaskStore', { skip: !REDIS_URL ? 'REDIS_URL not set' : false }, () => {
   let RedisTaskStore;
   let createRedisClient;
@@ -137,5 +260,64 @@ describe('TaskStoreFactory', () => {
     const fakeRedis = { multi: () => ({}) };
     const redisStore = createTaskStore(fakeRedis);
     assert.ok(redisStore instanceof RedisTaskStore, 'redis → RedisTaskStore');
+  });
+});
+
+describe('RedisTaskStore unit behavior', () => {
+  it('re-registering a done pr_tracking task resets it back to todo', async () => {
+    const { RedisTaskStore } = await import('../dist/domains/cats/services/stores/redis/RedisTaskStore.js');
+    const redis = new FakeRedisForTaskStore();
+    const store = new RedisTaskStore(redis, { ttlSeconds: 60 });
+
+    const original = await store.upsertBySubject({
+      kind: 'pr_tracking',
+      subjectKey: 'pr:owner/repo#42',
+      threadId: 'thread-1',
+      title: 'PR tracking: owner/repo#42',
+      why: 'track pr',
+      createdBy: 'opus',
+    });
+    await store.update(original.id, { status: 'done' });
+
+    const reopened = await store.upsertBySubject({
+      kind: 'pr_tracking',
+      subjectKey: 'pr:owner/repo#42',
+      threadId: 'thread-2',
+      title: 'PR tracking: owner/repo#42',
+      why: 'track pr',
+      createdBy: 'opus',
+    });
+
+    assert.equal(reopened.id, original.id);
+    assert.equal(reopened.threadId, 'thread-2');
+    assert.equal(reopened.status, 'todo');
+  });
+
+  it('does not leave a TTL on the shared thread index when active PR tracking exists', async () => {
+    const { RedisTaskStore } = await import('../dist/domains/cats/services/stores/redis/RedisTaskStore.js');
+    const { TaskKeys } = await import('../dist/domains/cats/services/stores/redis-keys/task-keys.js');
+    const redis = new FakeRedisForTaskStore();
+    const store = new RedisTaskStore(redis, { ttlSeconds: 60 });
+
+    await store.create({
+      kind: 'pr_tracking',
+      subjectKey: 'pr:owner/repo#42',
+      threadId: 'thread-1',
+      title: 'PR tracking: owner/repo#42',
+      why: 'track pr',
+      createdBy: 'opus',
+    });
+    const work = await store.create({
+      threadId: 'thread-1',
+      title: 'follow-up task',
+      why: 'mixed thread',
+      createdBy: 'opus',
+    });
+
+    await store.update(work.id, { status: 'done' });
+
+    assert.equal(redis.ttls.get(TaskKeys.thread('thread-1')), undefined);
+    const tasks = await store.listByThread('thread-1');
+    assert.ok(tasks.some((task) => task.kind === 'pr_tracking'));
   });
 });

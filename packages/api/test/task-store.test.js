@@ -115,6 +115,32 @@ describe('TaskStore', () => {
     });
   });
 
+  describe('upsertBySubject', () => {
+    it('re-registering a done pr_tracking task resets it back to todo', () => {
+      const original = store.upsertBySubject(
+        makeInput({
+          kind: 'pr_tracking',
+          subjectKey: 'pr:owner/repo#42',
+          title: 'PR tracking: owner/repo#42',
+        }),
+      );
+      store.update(original.id, { status: 'done' });
+
+      const reopened = store.upsertBySubject(
+        makeInput({
+          kind: 'pr_tracking',
+          subjectKey: 'pr:owner/repo#42',
+          threadId: 'thread-2',
+          title: 'PR tracking: owner/repo#42 (reopened)',
+        }),
+      );
+
+      assert.equal(reopened.id, original.id);
+      assert.equal(reopened.threadId, 'thread-2');
+      assert.equal(reopened.status, 'todo');
+    });
+  });
+
   describe('delete', () => {
     it('deletes an existing task', () => {
       const task = store.create(makeInput());

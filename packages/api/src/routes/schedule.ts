@@ -89,8 +89,9 @@ export const scheduleRoutes: FastifyPluginAsync<ScheduleRoutesOptions> = async (
         const runs = ledger.queryBySubject(s.id, sk, 1);
         if (runs.length > 0) return true;
       }
-      // Zero-run path: include tasks whose subjectKind matches thread's task types
-      if (s.display?.subjectKind && threadSubjectKinds.has(s.display.subjectKind)) return true;
+      // Zero-run path only: newly registered tasks should show up immediately,
+      // but once a task has runs we must not leak it across threads by subject kind.
+      if (!s.lastRun && s.display?.subjectKind && threadSubjectKinds.has(s.display.subjectKind)) return true;
       return false;
     });
 
