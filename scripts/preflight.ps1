@@ -91,7 +91,7 @@ function Get-PrebuildPackages {
     $currentPkg = ""
     $countdown = 0
     foreach ($line in (Get-Content $Lockfile)) {
-        if ($line -match "^\s{2}'?([a-zA-Z@][^\s']+)@(\d[^:]*)'?:\s*$") {
+        if ($line -match "^\s{2}'?([a-zA-Z@][^\s'(]+)@(\d[^:'(]*)'?") {
             $fullName = $Matches[1]
             $currentPkg = $fullName
             $countdown = 6

@@ -46,9 +46,17 @@ test_endpoint() {
     elif command -v wget &>/dev/null; then
         wget -q --timeout="$TIMEOUT" --spider "$url" 2>/dev/null
     else
-        # Fallback: bash TCP probe
-        local host; host="$(printf '%s' "$url" | sed -E 's|https?://||;s|/.*||;s|:.*||')"
-        (echo > /dev/tcp/"$host"/443) 2>/dev/null
+        # Fallback: bash TCP probe — extract host, port, and scheme from URL
+        local host port scheme
+        host="$(printf '%s' "$url" | sed -E 's|https?://||;s|/.*||')"
+        scheme="$(printf '%s' "$url" | sed -E 's|^(https?)://.*|\1|')"
+        if [[ "$host" == *:* ]]; then
+            port="${host##*:}"
+            host="${host%%:*}"
+        else
+            [[ "$scheme" == "https" ]] && port=443 || port=80
+        fi
+        (echo > /dev/tcp/"$host"/"$port") 2>/dev/null
     fi
 }
 
