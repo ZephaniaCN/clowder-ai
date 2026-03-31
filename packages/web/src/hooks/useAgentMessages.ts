@@ -446,7 +446,8 @@ export function useAgentMessages() {
             });
           }
           const replacementTarget = invocationId
-            ? (findCallbackReplacementTarget(msg.catId, invocationId) ?? (isStaleCallback ? null : findInvocationlessStreamPlaceholder(msg.catId)))
+            ? (findCallbackReplacementTarget(msg.catId, invocationId) ??
+              (isStaleCallback ? null : findInvocationlessStreamPlaceholder(msg.catId)))
             : findInvocationlessStreamPlaceholder(msg.catId);
 
           if (replacementTarget) {
