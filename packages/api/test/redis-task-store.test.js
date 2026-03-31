@@ -491,4 +491,32 @@ describe('RedisTaskStore unit behavior', () => {
     const kindIds = await redis.zrange(TaskKeys.kind('pr_tracking'), 0, -1);
     assert.deepEqual(kindIds, [externalTaskId]);
   });
+
+  it('recomputes thread TTL after deleting the last active pr_tracking task', async () => {
+    const { RedisTaskStore } = await import('../dist/domains/cats/services/stores/redis/RedisTaskStore.js');
+    const { TaskKeys } = await import('../dist/domains/cats/services/stores/redis-keys/task-keys.js');
+    const redis = new FakeRedisForTaskStore();
+    const store = new RedisTaskStore(redis, { ttlSeconds: 60 });
+
+    const prTask = await store.create({
+      kind: 'pr_tracking',
+      subjectKey: 'pr:owner/repo#321',
+      threadId: 'thread-delete',
+      title: 'PR tracking: owner/repo#321',
+      why: 'track pr',
+      createdBy: 'opus',
+    });
+    const doneWork = await store.create({
+      threadId: 'thread-delete',
+      title: 'done work',
+      why: 'mixed thread',
+      createdBy: 'opus',
+    });
+    await store.update(doneWork.id, { status: 'done' });
+    assert.equal(redis.ttls.get(TaskKeys.thread('thread-delete')), undefined);
+
+    const deleted = await store.delete(prTask.id);
+    assert.equal(deleted, true);
+    assert.equal(redis.ttls.get(TaskKeys.thread('thread-delete')), 60);
+  });
 });

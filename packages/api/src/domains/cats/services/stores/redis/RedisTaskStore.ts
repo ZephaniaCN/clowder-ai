@@ -238,6 +238,9 @@ export class RedisTaskStore implements ITaskStore {
     if (task.kind) pipeline.zrem(TaskKeys.kind(task.kind), taskId);
     if (task.subjectKey) pipeline.del(TaskKeys.subject(task.subjectKey));
     await pipeline.exec();
+    if (task.threadId) {
+      await this.applyThreadTtl(task.threadId);
+    }
     return true;
   }
 
