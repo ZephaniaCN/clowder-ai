@@ -99,7 +99,7 @@ scan_prebuild_packages() {
     # We parse header-to-header: if prebuild-install appears between two
     # package headers, we output the package name.
     awk '
-        /^  '\''?[a-zA-Z@][^ ]*@[0-9]/ {
+        /^  '\''?[a-zA-Z0-9@][^ ]*@[0-9]/ {
             if (found) print pkg
             pkg = $0; sub(/^  '\''?/, "", pkg); sub(/'\''?:$/, "", pkg)
             match(pkg, /@[0-9]/)

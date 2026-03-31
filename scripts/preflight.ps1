@@ -91,7 +91,7 @@ function Get-PrebuildPackages {
     $currentPkg = ""
     $found = $false
     foreach ($line in (Get-Content $Lockfile)) {
-        if ($line -match "^\s{2}'?([a-zA-Z@][^\s'(]+)@(\d[^:'(]*)'?") {
+        if ($line -match "^\s{2}'?([a-zA-Z0-9@][^\s'(]+)@(\d[^:'(]*)'?") {
             # New package header — emit previous if it had prebuild-install
             if ($found -and $currentPkg -and $currentPkg -ne "prebuild-install") {
                 $packages += $currentPkg
