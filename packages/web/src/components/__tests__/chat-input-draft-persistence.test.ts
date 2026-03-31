@@ -9,7 +9,7 @@
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ChatInput, threadDrafts } from '@/components/ChatInput';
+import { ChatInput, threadDrafts, threadImageDrafts } from '@/components/ChatInput';
 
 // ── Mocks ──
 vi.mock('@/components/icons/SendIcon', () => ({
@@ -56,6 +56,7 @@ let root: Root;
 
 beforeEach(() => {
   threadDrafts.clear();
+  threadImageDrafts.clear();
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -157,6 +158,67 @@ describe('ChatInput draft persistence', () => {
       root.render(React.createElement(ChatInput, { threadId: 'thread-C', onSend }));
     });
     expect(getTextarea().value).toBe('');
+  });
+
+  it('restores image drafts when remounting with same threadId', () => {
+    const onSend = vi.fn();
+    const fakeImage = new File(['png-data'], 'photo.png', { type: 'image/png' });
+
+    // Pre-seed the image draft map (simulates images attached before unmount)
+    threadImageDrafts.set('thread-IMG', [fakeImage]);
+
+    // Mount with thread that has saved image draft
+    act(() => {
+      root.render(React.createElement(ChatInput, { threadId: 'thread-IMG', onSend }));
+    });
+
+    // Verify the image draft was restored via the module-level map
+    expect(threadImageDrafts.get('thread-IMG')).toEqual([fakeImage]);
+  });
+
+  it('maintains independent image drafts per thread', () => {
+    const onSend = vi.fn();
+    const imgA = new File(['a'], 'a.png', { type: 'image/png' });
+    const imgB = new File(['b'], 'b.png', { type: 'image/png' });
+
+    // Seed image drafts for two threads
+    threadImageDrafts.set('thread-IA', [imgA]);
+    threadImageDrafts.set('thread-IB', [imgB]);
+
+    // Mount thread-IA — its draft should be independent
+    act(() => {
+      root.render(React.createElement(ChatInput, { threadId: 'thread-IA', onSend }));
+    });
+    expect(threadImageDrafts.get('thread-IA')).toEqual([imgA]);
+    expect(threadImageDrafts.get('thread-IB')).toEqual([imgB]);
+  });
+
+  it('clears image drafts after sending', () => {
+    const onSend = vi.fn();
+    const fakeImage = new File(['data'], 'pic.png', { type: 'image/png' });
+
+    // Seed an image draft, mount, and send
+    threadImageDrafts.set('thread-IS', [fakeImage]);
+    act(() => {
+      root.render(React.createElement(ChatInput, { threadId: 'thread-IS', onSend }));
+    });
+    act(() => {
+      typeInto(getTextarea(), 'msg with image');
+    });
+
+    // Press Enter to send
+    act(() => {
+      getTextarea().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    });
+
+    // After send, unmount and remount — image draft should be cleared
+    act(() => root.unmount());
+    root = createRoot(container);
+    act(() => {
+      root.render(React.createElement(ChatInput, { threadId: 'thread-IS', onSend }));
+    });
+    // Text draft cleared after send → image draft should also be cleared
+    expect(threadImageDrafts.has('thread-IS')).toBe(false);
   });
 
   it('does not persist draft when threadId is undefined', () => {
