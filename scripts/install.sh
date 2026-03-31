@@ -870,8 +870,18 @@ else fail "cat-cafe-skills/ not found"; exit 1; fi
 step "[6/9] Installing AI CLI tools / 安装 AI 命令行工具..."
 info "  Clowder spawns CLI subprocesses — these are required"
 install_npm_cli() {
-    local name="$1" cmd="$2" pkg="$3"; info "  Installing $name ($pkg)..."; npm_global_install "$pkg" 2>&1; hash -r 2>/dev/null || true
-    command -v "$cmd" &>/dev/null || { fail "$name install failed. Try: npm install -g $pkg"; exit 1; }; ok "$name installed"
+    local name="$1" cmd="$2" pkg="$3"
+    info "  Installing $name ($pkg)..."
+    npm_global_install "$pkg" 2>&1
+    # npm global bin may not be on PATH (custom prefix, fnm, etc.)
+    local _npm_bin; _npm_bin="$(npm config get prefix 2>/dev/null)/bin"
+    if [[ -d "$_npm_bin" ]]; then
+        case ":$PATH:" in *":$_npm_bin:"*) ;; *) export PATH="$_npm_bin:$PATH" ;; esac
+    fi
+    hash -r 2>/dev/null || true
+    command -v "$cmd" &>/dev/null || { fail "$name install failed. Try: npm install -g $pkg"; exit 1; }
+    persist_user_bin "$cmd"
+    ok "$name installed"
 }
 install_brew_cask() {
     local name="$1" cmd="$2" cask="$3"
