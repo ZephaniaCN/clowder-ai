@@ -72,7 +72,7 @@ export class RedisTaskStore implements ITaskStore {
     if (!taskId) return null;
     const task = await this.get(taskId);
     if (task) return task;
-    await this.redis.del(TaskKeys.subject(subjectKey));
+    await this.compareAndDeleteSubject(subjectKey, taskId);
     return null;
   }
 
@@ -158,6 +158,7 @@ export class RedisTaskStore implements ITaskStore {
 
     if (existing.threadId !== input.threadId) {
       await this.redis.zrem(TaskKeys.thread(existing.threadId), existing.id);
+      await this.applyThreadTtl(existing.threadId);
     }
 
     await this.writeTask(updated);
@@ -274,7 +275,6 @@ export class RedisTaskStore implements ITaskStore {
   private async applyTtl(task: TaskItem): Promise<void> {
     if (this.ttlSeconds === null) return;
     const key = TaskKeys.detail(task.id);
-    const threadKey = TaskKeys.thread(task.threadId);
 
     if (task.kind === 'pr_tracking' && task.status !== 'done') {
       // Active PR tracking tasks don't expire
@@ -283,14 +283,30 @@ export class RedisTaskStore implements ITaskStore {
       await this.redis.expire(key, this.ttlSeconds);
     }
 
+    await this.applyThreadTtl(task.threadId);
+  }
+
+  private async applyThreadTtl(threadId: string): Promise<void> {
+    if (this.ttlSeconds === null) return;
+    const threadKey = TaskKeys.thread(threadId);
+
     // A thread index shared with any active PR-tracking task must remain durable.
-    const threadTasks = await this.listByThread(task.threadId);
+    const threadTasks = await this.listByThread(threadId);
     const hasActivePrTracking = threadTasks.some((item) => item.kind === 'pr_tracking' && item.status !== 'done');
     if (hasActivePrTracking) {
       await this.redis.persist(threadKey);
     } else {
       await this.redis.expire(threadKey, this.ttlSeconds);
     }
+  }
+
+  private async compareAndDeleteSubject(subjectKey: string, staleTaskId: string): Promise<void> {
+    await this.redis.eval(
+      "if redis.call('get', KEYS[1]) == ARGV[1] then redis.call('del', KEYS[1]) return 1 end return 0",
+      1,
+      TaskKeys.subject(subjectKey),
+      staleTaskId,
+    );
   }
 
   private async fetchTasksByIds(ids: string[], options?: { cleanupKey?: string }): Promise<TaskItem[]> {

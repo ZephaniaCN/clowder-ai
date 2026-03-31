@@ -50,6 +50,12 @@ class FakeRedisForTaskStore {
       this.strings.set(key, nextValue);
       return 1;
     }
+    if (script.includes("redis.call('del'")) {
+      const [expectedValue] = args;
+      if ((this.strings.get(key) ?? null) !== expectedValue) return 0;
+      this.strings.delete(key);
+      return 1;
+    }
     throw new Error(`Unsupported eval script: ${script}`);
   }
 
@@ -349,5 +355,81 @@ describe('RedisTaskStore unit behavior', () => {
     assert.deepEqual(byThread, []);
     const remainingThreadIds = await redis.zrange(TaskKeys.thread('thread-7'), 0, -1);
     assert.deepEqual(remainingThreadIds, []);
+  });
+
+  it('does not delete a repaired subject mapping during stale cleanup', async () => {
+    const { RedisTaskStore } = await import('../dist/domains/cats/services/stores/redis/RedisTaskStore.js');
+    const { TaskKeys } = await import('../dist/domains/cats/services/stores/redis-keys/task-keys.js');
+    const redis = new FakeRedisForTaskStore();
+    const store = new RedisTaskStore(redis, { ttlSeconds: 60 });
+
+    const staleTaskId = 'task-stale';
+    const freshTaskId = 'task-fresh';
+    redis.strings.set(TaskKeys.subject('pr:owner/repo#88'), staleTaskId);
+    redis.hashes.set(TaskKeys.detail(freshTaskId), {
+      id: freshTaskId,
+      kind: 'pr_tracking',
+      threadId: 'thread-8',
+      subjectKey: 'pr:owner/repo#88',
+      title: 'PR tracking: owner/repo#88',
+      ownerCatId: '',
+      status: 'todo',
+      why: 'track pr',
+      createdBy: 'opus',
+      createdAt: '1',
+      updatedAt: '1',
+      userId: '',
+    });
+
+    const originalHgetall = redis.hgetall.bind(redis);
+    let repaired = false;
+    redis.hgetall = async (key) => {
+      if (key === TaskKeys.detail(staleTaskId) && !repaired) {
+        repaired = true;
+        redis.strings.set(TaskKeys.subject('pr:owner/repo#88'), freshTaskId);
+        return {};
+      }
+      return originalHgetall(key);
+    };
+
+    const result = await store.getBySubject('pr:owner/repo#88');
+    assert.equal(result, null);
+    assert.equal(redis.strings.get(TaskKeys.subject('pr:owner/repo#88')), freshTaskId);
+  });
+
+  it('recomputes TTL for the previous thread index when a tracked PR moves threads', async () => {
+    const { RedisTaskStore } = await import('../dist/domains/cats/services/stores/redis/RedisTaskStore.js');
+    const { TaskKeys } = await import('../dist/domains/cats/services/stores/redis-keys/task-keys.js');
+    const redis = new FakeRedisForTaskStore();
+    const store = new RedisTaskStore(redis, { ttlSeconds: 60 });
+
+    await store.upsertBySubject({
+      kind: 'pr_tracking',
+      subjectKey: 'pr:owner/repo#99',
+      threadId: 'thread-old',
+      title: 'PR tracking: owner/repo#99',
+      why: 'track pr',
+      createdBy: 'opus',
+    });
+    const oldThreadWork = await store.create({
+      threadId: 'thread-old',
+      title: 'old thread follow-up',
+      why: 'cleanup',
+      createdBy: 'opus',
+    });
+    await store.update(oldThreadWork.id, { status: 'done' });
+    assert.equal(redis.ttls.get(TaskKeys.thread('thread-old')), undefined);
+
+    await store.upsertBySubject({
+      kind: 'pr_tracking',
+      subjectKey: 'pr:owner/repo#99',
+      threadId: 'thread-new',
+      title: 'PR tracking: owner/repo#99',
+      why: 'track pr',
+      createdBy: 'opus',
+    });
+
+    assert.equal(redis.ttls.get(TaskKeys.thread('thread-old')), 60);
+    assert.equal(redis.ttls.get(TaskKeys.thread('thread-new')), undefined);
   });
 });
