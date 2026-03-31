@@ -22,6 +22,7 @@ import { TaskKeys } from '../redis-keys/task-keys.js';
 const DEFAULT_TTL = 30 * 24 * 60 * 60; // 30 days
 const MAX_SUBJECT_LOOKUP_NULL_RETRIES = 3;
 const MAX_MISSING_TASK_RETRIES = 3;
+const MAX_AUTOMATION_STATE_PATCH_RETRIES = 5;
 
 export class RedisTaskStore implements ITaskStore {
   private readonly redis: RedisClient;
@@ -113,7 +114,7 @@ export class RedisTaskStore implements ITaskStore {
         automationState: input.automationState,
         userId: input.userId,
       };
-      await this.writeTask(task);
+      await this.writeTask(task, { syncSubject: false });
       return task;
     }
 
@@ -163,7 +164,7 @@ export class RedisTaskStore implements ITaskStore {
         automationState: input.automationState,
         userId: input.userId,
       };
-      await this.writeTask(task);
+      await this.writeTask(task, { syncSubject: false });
       return task;
     }
 
@@ -195,29 +196,32 @@ export class RedisTaskStore implements ITaskStore {
   }
 
   async patchAutomationState(taskId: string, patch: Partial<AutomationState>): Promise<TaskItem | null> {
-    const existing = await this.get(taskId);
-    if (!existing) return null;
+    const key = TaskKeys.detail(taskId);
+    for (let attempt = 0; attempt < MAX_AUTOMATION_STATE_PATCH_RETRIES; attempt += 1) {
+      await this.redis.watch(key);
+      const data = await this.redis.hgetall(key);
+      if (!data || !data.id) {
+        await this.redis.unwatch();
+        return null;
+      }
 
-    const merged: AutomationState = {
-      ...existing.automationState,
-      ...patch,
-      ci: patch.ci ? { ...existing.automationState?.ci, ...patch.ci } : existing.automationState?.ci,
-      conflict: patch.conflict
-        ? { ...existing.automationState?.conflict, ...patch.conflict }
-        : existing.automationState?.conflict,
-      review: patch.review
-        ? { ...existing.automationState?.review, ...patch.review }
-        : existing.automationState?.review,
-    };
+      const existing = this.hydrateTask(data);
+      const updated: TaskItem = {
+        ...existing,
+        automationState: this.mergeAutomationState(existing.automationState, patch),
+        updatedAt: Date.now(),
+      };
 
-    const updated: TaskItem = {
-      ...existing,
-      automationState: merged,
-      updatedAt: Date.now(),
-    };
+      const pipeline = this.redis.multi();
+      pipeline.hset(key, this.serializeTask(updated));
+      const result = await pipeline.exec();
+      if (result) {
+        return updated;
+      }
+      await this.waitForInFlightTaskWrite();
+    }
 
-    await this.redis.hset(TaskKeys.detail(taskId), this.serializeTask(updated));
-    return updated;
+    throw new Error(`RedisTaskStore patchAutomationState: failed to apply atomic patch for ${taskId}`);
   }
 
   async update(taskId: string, input: UpdateTaskInput): Promise<TaskItem | null> {
@@ -290,13 +294,13 @@ export class RedisTaskStore implements ITaskStore {
 
   // --- private helpers ---
 
-  private async writeTask(task: TaskItem): Promise<void> {
+  private async writeTask(task: TaskItem, options?: { syncSubject?: boolean }): Promise<void> {
     const key = TaskKeys.detail(task.id);
     const pipeline = this.redis.multi();
     pipeline.hset(key, this.serializeTask(task));
     pipeline.zadd(TaskKeys.thread(task.threadId), String(task.createdAt), task.id);
     pipeline.zadd(TaskKeys.kind(task.kind), String(task.createdAt), task.id);
-    if (task.subjectKey) {
+    if ((options?.syncSubject ?? true) && task.subjectKey) {
       pipeline.set(TaskKeys.subject(task.subjectKey), task.id);
     }
     await pipeline.exec();
@@ -343,6 +347,20 @@ export class RedisTaskStore implements ITaskStore {
       TaskKeys.subject(subjectKey),
       staleTaskId,
     );
+  }
+
+  private mergeAutomationState(
+    existing: AutomationState | undefined,
+    patch: Partial<AutomationState>,
+  ): AutomationState | undefined {
+    if (!existing && Object.keys(patch).length === 0) return undefined;
+    return {
+      ...existing,
+      ...patch,
+      ci: patch.ci ? { ...existing?.ci, ...patch.ci } : existing?.ci,
+      conflict: patch.conflict ? { ...existing?.conflict, ...patch.conflict } : existing?.conflict,
+      review: patch.review ? { ...existing?.review, ...patch.review } : existing?.review,
+    };
   }
 
   private async fetchTasksByIds(ids: string[], options?: { cleanupKey?: string }): Promise<TaskItem[]> {

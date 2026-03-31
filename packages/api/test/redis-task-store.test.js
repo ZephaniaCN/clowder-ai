@@ -16,11 +16,14 @@ class FakeRedisForTaskStore {
     this.strings = new Map();
     this.sortedSets = new Map();
     this.ttls = new Map();
+    this.versions = new Map();
+    this.watchedVersions = null;
   }
 
   async hset(key, value) {
     const existing = this.hashes.get(key) ?? {};
     this.hashes.set(key, { ...existing, ...value });
+    this.bumpVersion(key);
     return 1;
   }
 
@@ -34,12 +37,14 @@ class FakeRedisForTaskStore {
 
   async set(key, value) {
     this.strings.set(key, value);
+    this.bumpVersion(key);
     return 'OK';
   }
 
   async setnx(key, value) {
     if (this.strings.has(key)) return 0;
     this.strings.set(key, value);
+    this.bumpVersion(key);
     return 1;
   }
 
@@ -48,12 +53,14 @@ class FakeRedisForTaskStore {
       const [expectedValue, nextValue] = args;
       if ((this.strings.get(key) ?? null) !== expectedValue) return 0;
       this.strings.set(key, nextValue);
+      this.bumpVersion(key);
       return 1;
     }
     if (script.includes("redis.call('del'")) {
       const [expectedValue] = args;
       if ((this.strings.get(key) ?? null) !== expectedValue) return 0;
       this.strings.delete(key);
+      this.bumpVersion(key);
       return 1;
     }
     throw new Error(`Unsupported eval script: ${script}`);
@@ -63,6 +70,7 @@ class FakeRedisForTaskStore {
     const set = this.sortedSets.get(key) ?? new Map();
     set.set(member, Number(score));
     this.sortedSets.set(key, set);
+    this.bumpVersion(key);
     return 1;
   }
 
@@ -76,7 +84,9 @@ class FakeRedisForTaskStore {
   async zrem(key, member) {
     const set = this.sortedSets.get(key);
     if (!set) return 0;
-    return set.delete(member) ? 1 : 0;
+    const deleted = set.delete(member) ? 1 : 0;
+    if (deleted) this.bumpVersion(key);
+    return deleted;
   }
 
   async del(key) {
@@ -85,17 +95,38 @@ class FakeRedisForTaskStore {
     deleted += this.strings.delete(key) ? 1 : 0;
     deleted += this.sortedSets.delete(key) ? 1 : 0;
     this.ttls.delete(key);
+    if (deleted) this.bumpVersion(key);
     return deleted;
   }
 
   async expire(key, ttl) {
     this.ttls.set(key, ttl);
+    this.bumpVersion(key);
     return 1;
   }
 
   async persist(key) {
     this.ttls.delete(key);
+    this.bumpVersion(key);
     return 1;
+  }
+
+  async watch(...keys) {
+    this.watchedVersions = new Map(keys.map((key) => [key, this.getVersion(key)]));
+    return 'OK';
+  }
+
+  async unwatch() {
+    this.watchedVersions = null;
+    return 'OK';
+  }
+
+  getVersion(key) {
+    return this.versions.get(key) ?? 0;
+  }
+
+  bumpVersion(key) {
+    this.versions.set(key, this.getVersion(key) + 1);
   }
 
   multi() {
@@ -126,10 +157,19 @@ class FakeRedisForTaskStore {
         return pipeline;
       },
       exec: async () => {
+        if (this.watchedVersions) {
+          for (const [key, version] of this.watchedVersions.entries()) {
+            if (this.getVersion(key) !== version) {
+              this.watchedVersions = null;
+              return null;
+            }
+          }
+        }
         const results = [];
         for (const op of ops) {
           results.push([null, await op()]);
         }
+        this.watchedVersions = null;
         return results;
       },
     };
@@ -697,5 +737,103 @@ describe('RedisTaskStore unit behavior', () => {
     assert.equal(redis.strings.get(TaskKeys.subject('pr:owner/repo#124')), existingTaskId);
     const kindIds = await redis.zrange(TaskKeys.kind('pr_tracking'), 0, -1);
     assert.deepEqual(kindIds, [existingTaskId]);
+  });
+
+  it('preserves concurrent automationState subtree patches', async () => {
+    const { RedisTaskStore } = await import('../dist/domains/cats/services/stores/redis/RedisTaskStore.js');
+    const { TaskKeys } = await import('../dist/domains/cats/services/stores/redis-keys/task-keys.js');
+    const redis = new FakeRedisForTaskStore();
+    const store = new RedisTaskStore(redis, { ttlSeconds: 60 });
+
+    const task = await store.create({
+      kind: 'pr_tracking',
+      subjectKey: 'pr:owner/repo#800',
+      threadId: 'thread-automation-race',
+      title: 'PR tracking: owner/repo#800',
+      why: 'track pr',
+      createdBy: 'opus',
+      automationState: {
+        ci: { headSha: 'sha-old', lastFingerprint: 'ci-old' },
+        conflict: { mergeState: 'MERGEABLE' },
+      },
+    });
+
+    const originalHgetall = redis.hgetall.bind(redis);
+    const originalHset = redis.hset.bind(redis);
+    let injected = false;
+    redis.hgetall = async (key) => {
+      if (key === TaskKeys.detail(task.id) && !injected) {
+        injected = true;
+        const snapshot = await originalHgetall(key);
+        await originalHset(key, {
+          automationState: JSON.stringify({
+            ci: { headSha: 'sha-old', lastFingerprint: 'ci-old' },
+            conflict: { mergeState: 'CONFLICTING', lastFingerprint: 'conflict-new' },
+          }),
+          updatedAt: String(task.updatedAt + 1),
+        });
+        return snapshot;
+      }
+      return originalHgetall(key);
+    };
+
+    const updated = await store.patchAutomationState(task.id, {
+      ci: { lastFingerprint: 'ci-new', headSha: 'sha-new' },
+    });
+
+    assert.equal(updated?.automationState?.ci?.lastFingerprint, 'ci-new');
+    assert.equal(updated?.automationState?.conflict?.lastFingerprint, 'conflict-new');
+    assert.equal(updated?.automationState?.conflict?.mergeState, 'CONFLICTING');
+  });
+
+  it('does not restore a stale subject owner after CAS takeover', async () => {
+    const { RedisTaskStore } = await import('../dist/domains/cats/services/stores/redis/RedisTaskStore.js');
+    const { TaskKeys } = await import('../dist/domains/cats/services/stores/redis-keys/task-keys.js');
+    const redis = new FakeRedisForTaskStore();
+    const store = new RedisTaskStore(redis, { ttlSeconds: 60 });
+
+    let releaseFirstWrite;
+    const firstWriteBlocked = new Promise((resolve) => {
+      releaseFirstWrite = resolve;
+    });
+    const originalHset = redis.hset.bind(redis);
+    let blocked = false;
+    redis.hset = async (key, value) => {
+      if (!blocked && key.startsWith(TaskKeys.detail(''))) {
+        blocked = true;
+        await firstWriteBlocked;
+      }
+      return originalHset(key, value);
+    };
+
+    const first = store.upsertBySubject({
+      kind: 'pr_tracking',
+      subjectKey: 'pr:owner/repo#801',
+      threadId: 'thread-a',
+      title: 'PR tracking: owner/repo#801',
+      why: 'track pr',
+      createdBy: 'opus',
+    });
+
+    while (!redis.strings.get(TaskKeys.subject('pr:owner/repo#801'))) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
+    const secondTask = await store.upsertBySubject({
+      kind: 'pr_tracking',
+      subjectKey: 'pr:owner/repo#801',
+      threadId: 'thread-b',
+      title: 'PR tracking: owner/repo#801',
+      why: 'track pr',
+      createdBy: 'opus',
+    });
+
+    releaseFirstWrite();
+    const firstTask = await first;
+
+    assert.notEqual(firstTask.id, secondTask.id);
+    const bySubject = await store.getBySubject('pr:owner/repo#801');
+    assert.equal(bySubject?.id, secondTask.id);
+    assert.equal(bySubject?.threadId, 'thread-b');
   });
 });
