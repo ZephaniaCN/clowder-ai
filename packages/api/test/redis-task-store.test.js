@@ -519,4 +519,52 @@ describe('RedisTaskStore unit behavior', () => {
     assert.equal(deleted, true);
     assert.equal(redis.ttls.get(TaskKeys.thread('thread-delete')), 60);
   });
+
+  it('retries when the claimed task hash is temporarily missing before treating it as orphan', async () => {
+    const { RedisTaskStore } = await import('../dist/domains/cats/services/stores/redis/RedisTaskStore.js');
+    const { TaskKeys } = await import('../dist/domains/cats/services/stores/redis-keys/task-keys.js');
+    const redis = new FakeRedisForTaskStore();
+    const store = new RedisTaskStore(redis, { ttlSeconds: 60 });
+
+    const existingTaskId = 'task-inflight';
+    redis.strings.set(TaskKeys.subject('pr:owner/repo#124'), existingTaskId);
+    redis.hashes.set(TaskKeys.detail(existingTaskId), {
+      id: existingTaskId,
+      kind: 'pr_tracking',
+      threadId: 'thread-existing',
+      subjectKey: 'pr:owner/repo#124',
+      title: 'PR tracking: owner/repo#124',
+      ownerCatId: '',
+      status: 'todo',
+      why: 'track pr',
+      createdBy: 'opus',
+      createdAt: '1',
+      updatedAt: '1',
+      userId: '',
+    });
+
+    const originalHgetall = redis.hgetall.bind(redis);
+    let firstLookup = true;
+    redis.hgetall = async (key) => {
+      if (key === TaskKeys.detail(existingTaskId) && firstLookup) {
+        firstLookup = false;
+        return {};
+      }
+      return originalHgetall(key);
+    };
+
+    const result = await store.upsertBySubject({
+      kind: 'pr_tracking',
+      subjectKey: 'pr:owner/repo#124',
+      threadId: 'thread-new',
+      title: 'PR tracking: owner/repo#124',
+      why: 'track pr',
+      createdBy: 'opus',
+    });
+
+    assert.equal(result.id, existingTaskId);
+    assert.equal(redis.strings.get(TaskKeys.subject('pr:owner/repo#124')), existingTaskId);
+    const kindIds = await redis.zrange(TaskKeys.kind('pr_tracking'), 0, -1);
+    assert.deepEqual(kindIds, [existingTaskId]);
+  });
 });

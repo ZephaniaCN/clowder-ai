@@ -77,6 +77,10 @@ export class RedisTaskStore implements ITaskStore {
   }
 
   async upsertBySubject(input: CreateTaskInput): Promise<TaskItem> {
+    return this.upsertBySubjectInternal(input, 0);
+  }
+
+  private async upsertBySubjectInternal(input: CreateTaskInput, missingTaskRetries: number): Promise<TaskItem> {
     const sk = input.subjectKey;
     if (!sk) return this.create(input);
 
@@ -112,11 +116,15 @@ export class RedisTaskStore implements ITaskStore {
     if (!existingId) {
       // Another worker may have claimed/released/reclaimed the slot between SETNX and GET.
       // Retry the atomic upsert flow instead of blindly creating a duplicate task hash.
-      return this.upsertBySubject(input);
+      return this.upsertBySubjectInternal(input, missingTaskRetries);
     }
 
     const existing = await this.get(existingId);
     if (!existing) {
+      if (missingTaskRetries < 3) {
+        await this.waitForInFlightTaskWrite();
+        return this.upsertBySubjectInternal(input, missingTaskRetries + 1);
+      }
       // Orphaned subject key — CAS overwrite: only claim if value still matches stale ID
       const won = await this.redis.eval(
         "if redis.call('get', KEYS[1]) == ARGV[1] then redis.call('set', KEYS[1], ARGV[2]) return 1 end return 0",
@@ -127,7 +135,7 @@ export class RedisTaskStore implements ITaskStore {
       );
       if (!won) {
         // Another process already fixed the orphan — retry
-        return this.upsertBySubject(input);
+        return this.upsertBySubjectInternal(input, 0);
       }
       const task: TaskItem = {
         id: newId,
@@ -276,6 +284,10 @@ export class RedisTaskStore implements ITaskStore {
     }
     await pipeline.exec();
     await this.applyTtl(task);
+  }
+
+  private async waitForInFlightTaskWrite(): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, 0));
   }
 
   /** pr_tracking tasks with status!=done never expire; others get default TTL. */
