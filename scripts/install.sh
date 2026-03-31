@@ -611,6 +611,11 @@ fi
 if [[ "$DISTRO_FAMILY" == "darwin" ]]; then
     USER_BIN_DIR="$HOME/.local/bin"
     mkdir -p "$USER_BIN_DIR"
+    # Ensure USER_BIN_DIR is on current session PATH (bare-metal installs may not have it)
+    case ":$PATH:" in
+        *":$USER_BIN_DIR:"*) ;;
+        *) export PATH="$USER_BIN_DIR:$PATH" ;;
+    esac
 fi
 
 resolve_project_dir
