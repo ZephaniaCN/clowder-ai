@@ -146,10 +146,7 @@ export class RedisTaskStore implements ITaskStore {
       threadId: input.threadId,
       title: input.title,
       ownerCatId: input.ownerCatId ?? existing.ownerCatId,
-      status:
-        existing.kind === 'pr_tracking' && existing.status === 'done'
-          ? 'todo'
-          : existing.status,
+      status: existing.kind === 'pr_tracking' && existing.status === 'done' ? 'todo' : existing.status,
       why: input.why,
       userId: input.userId ?? existing.userId,
       automationState: input.automationState ?? existing.automationState,

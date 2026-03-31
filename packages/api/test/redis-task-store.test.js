@@ -62,9 +62,7 @@ class FakeRedisForTaskStore {
 
   async zrange(key, start, end) {
     const set = this.sortedSets.get(key) ?? new Map();
-    const items = [...set.entries()]
-      .sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]))
-      .map(([member]) => member);
+    const items = [...set.entries()].sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0])).map(([member]) => member);
     const normalizedEnd = end < 0 ? items.length + end + 1 : end + 1;
     return items.slice(start, normalizedEnd);
   }
