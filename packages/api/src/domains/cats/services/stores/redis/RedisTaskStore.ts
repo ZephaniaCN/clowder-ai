@@ -110,8 +110,18 @@ export class RedisTaskStore implements ITaskStore {
 
     const existing = await this.get(existingId);
     if (!existing) {
-      // Orphaned subject key — overwrite and create fresh
-      await this.redis.set(TaskKeys.subject(sk), newId);
+      // Orphaned subject key — CAS overwrite: only claim if value still matches stale ID
+      const won = await this.redis.eval(
+        "if redis.call('get', KEYS[1]) == ARGV[1] then redis.call('set', KEYS[1], ARGV[2]) return 1 end return 0",
+        1,
+        TaskKeys.subject(sk),
+        existingId,
+        newId,
+      );
+      if (!won) {
+        // Another process already fixed the orphan — retry
+        return this.upsertBySubject(input);
+      }
       const task: TaskItem = {
         id: newId,
         kind: input.kind ?? 'work',

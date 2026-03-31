@@ -71,9 +71,15 @@ export const scheduleRoutes: FastifyPluginAsync<ScheduleRoutesOptions> = async (
     threadSubjectKeys.add(`thread-${threadId}`);
     threadSubjectKeys.add(`thread:${threadId}`);
 
+    // Derive which subject kinds exist in the thread (e.g. 'pr' if any pr:* keys)
+    const threadSubjectKinds = new Set<string>();
+    for (const sk of threadSubjectKeys) {
+      if (sk.startsWith('pr:')) threadSubjectKinds.add('pr');
+      else if (sk.startsWith('thread:') || sk.startsWith('thread-')) threadSubjectKinds.add('thread');
+    }
+
     // P1-2 fix: don't rely solely on lastRun — query ledger for ANY matching run.
-    // A global task (e.g. cicd-check) has multiple runs across PRs; lastRun
-    // only reflects the most recent one, which may belong to a different thread.
+    // Also include tasks whose subjectKind matches even with zero runs (newly registered).
     const ledger = taskRunner.getLedger();
     const filtered = summaries.filter((s) => {
       // Quick path: if lastRun matches, include immediately
@@ -83,6 +89,8 @@ export const scheduleRoutes: FastifyPluginAsync<ScheduleRoutesOptions> = async (
         const runs = ledger.queryBySubject(s.id, sk, 1);
         if (runs.length > 0) return true;
       }
+      // Zero-run path: include tasks whose subjectKind matches thread's task types
+      if (s.display?.subjectKind && threadSubjectKinds.has(s.display.subjectKind)) return true;
       return false;
     });
 
