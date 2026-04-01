@@ -467,6 +467,13 @@ export function useAgentMessages() {
           } else {
             // Use backend messageId when available for rich_block correlation (#83 P2)
             const id = msg.messageId ?? `msg-${Date.now()}-${msg.catId}-cb-${++cbSeq}`;
+            // Preserve explicit invocationId so store-level TD112 dedup (Phase 1)
+            // can distinguish this bubble and Phase 2 soft bridge won't merge it
+            // into an unrelated invocationless stream placeholder.
+            const extraForAdd = {
+              ...(msg.extra?.crossPost ? { crossPost: msg.extra.crossPost } : {}),
+              ...(hasExplicitInvocationId && msg.invocationId ? { stream: { invocationId: msg.invocationId } } : {}),
+            };
             addMessage({
               id,
               type: 'assistant',
@@ -474,7 +481,7 @@ export function useAgentMessages() {
               content: msg.content,
               origin: 'callback',
               ...(msg.metadata ? { metadata: msg.metadata } : {}),
-              ...(msg.extra?.crossPost ? { extra: { crossPost: msg.extra.crossPost } } : {}),
+              ...(Object.keys(extraForAdd).length > 0 ? { extra: extraForAdd } : {}),
               ...(msg.mentionsUser ? { mentionsUser: true } : {}),
               ...(a2aGroupRef.current ? { a2aGroupId: a2aGroupRef.current } : {}),
               ...(msg.replyTo ? { replyTo: msg.replyTo } : {}),
