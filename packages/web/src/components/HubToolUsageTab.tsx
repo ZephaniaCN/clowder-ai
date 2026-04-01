@@ -44,14 +44,19 @@ export function HubToolUsageTab() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [days, setDays] = useState(7);
+  const [catFilter, setCatFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
 
   const fetchData = useCallback(
     async (refresh = false) => {
       setLoading(true);
       setError(null);
       try {
-        const url = `/api/usage/tools?days=${days}${refresh ? '&refresh=1' : ''}`;
-        const res = await apiFetch(url);
+        const params = new URLSearchParams({ days: String(days) });
+        if (catFilter) params.set('catId', catFilter);
+        if (categoryFilter) params.set('category', categoryFilter);
+        if (refresh) params.set('refresh', '1');
+        const res = await apiFetch(`/api/usage/tools?${params}`);
         if (res.ok) {
           setReport((await res.json()) as ToolUsageReport);
         } else {
@@ -63,7 +68,7 @@ export function HubToolUsageTab() {
         setLoading(false);
       }
     },
-    [days],
+    [days, catFilter, categoryFilter],
   );
 
   useEffect(() => {
@@ -82,6 +87,30 @@ export function HubToolUsageTab() {
           <p className="text-[11px] text-[#A08A76]">猫猫们的每日工具箱使用记录</p>
         </div>
         <div className="flex items-center gap-2">
+          <select
+            value={catFilter}
+            onChange={(e) => setCatFilter(e.target.value)}
+            className="rounded-lg border border-[#E8DDD2] bg-white px-2 py-1 text-xs text-[#5C4A3A]"
+          >
+            <option value="">全部猫猫</option>
+            {Object.entries(CAT_LABELS).map(([id, label]) => (
+              <option key={id} value={id}>
+                {label}
+              </option>
+            ))}
+          </select>
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            className="rounded-lg border border-[#E8DDD2] bg-white px-2 py-1 text-xs text-[#5C4A3A]"
+          >
+            <option value="">全部类型</option>
+            {CATEGORIES.map((cat) => (
+              <option key={cat} value={cat}>
+                {CATEGORY_STYLE[cat].icon} {CATEGORY_STYLE[cat].label}
+              </option>
+            ))}
+          </select>
           <select
             value={days}
             onChange={(e) => setDays(Number(e.target.value))}
