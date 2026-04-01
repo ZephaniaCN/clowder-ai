@@ -1,5 +1,5 @@
 /**
- * ToolUsageArchiver + days=0 merge + sweep-path Tests — F142 Phase B
+ * ToolUsageArchiver + days=0 merge + sweep-path Tests — F150 Phase B (#339)
  * Covers JSONL archive persistence, all-time (days=0) Redis+archive merge,
  * and the sweep building blocks (fetchAllEntries, getArchivedDates, dedup).
  */

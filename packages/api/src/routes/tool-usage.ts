@@ -1,5 +1,5 @@
 /**
- * Tool Usage Routes — F150
+ * Tool Usage Routes — F150 (#339)
  * GET /api/usage/tools — 按天×猫聚合 tool/skill/MCP 调用次数。
  */
 

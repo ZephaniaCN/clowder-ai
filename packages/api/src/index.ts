@@ -817,11 +817,11 @@ async function main(): Promise<void> {
   const packStoreDir = join(findMonorepoRoot(process.cwd()), '.cat-cafe', 'packs');
   const packStore = new PackStore(packStoreDir);
 
+  // F150: Tool usage counter (fire-and-forget INCR on tool_use events)
   const toolUsageArchiver = redis
     ? new (await import('./domains/cats/services/tool-usage/ToolUsageArchiver.js')).ToolUsageArchiver(
         join(findMonorepoRoot(process.cwd()), '.cat-cafe', 'tool-usage-archive.jsonl'),
       )
-  // F150: Tool usage counter (fire-and-forget INCR on tool_use events)
     : undefined;
   const toolUsageCounter = redis
     ? new (await import('./domains/cats/services/tool-usage/ToolUsageCounter.js')).ToolUsageCounter(
@@ -830,7 +830,7 @@ async function main(): Promise<void> {
       )
     : undefined;
 
-  // F142: Daily archive sweep — persist expiring Redis counters to JSONL
+  // F150: Daily archive sweep — persist expiring Redis counters to JSONL
   if (toolUsageCounter && toolUsageArchiver) {
     const sweepLog = (await import('./infrastructure/logger.js')).createModuleLogger('tool-usage-sweep');
     let sweepInFlight = false;
