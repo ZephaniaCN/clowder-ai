@@ -121,6 +121,34 @@ describe('Schedule Routes', () => {
       assert.ok(body.tasks.some((task) => task.id === 'review-feedback'));
     });
 
+    it('ignores done PR tracking tasks when deriving zero-run subjectKind fallback', async () => {
+      runner.register({
+        id: 'review-feedback',
+        profile: 'poller',
+        trigger: { type: 'interval', ms: 60000 },
+        admission: { gate: async () => ({ run: false, reason: 'idle' }) },
+        run: { overlap: 'skip', timeoutMs: 5000, execute: async () => {} },
+        state: { runLedger: 'sqlite' },
+        outcome: { whenNoSignal: 'record' },
+        enabled: () => true,
+        display: { label: 'Review 反馈', category: 'pr', subjectKind: 'pr' },
+      });
+      const tracking = taskStore.upsertBySubject({
+        kind: 'pr_tracking',
+        subjectKey: 'pr:owner/repo#42',
+        threadId: 'abc123',
+        title: 'PR tracking: owner/repo#42',
+        why: 'track pr',
+        createdBy: 'opus',
+      });
+      taskStore.update(tracking.id, { status: 'done' });
+
+      const res = await app.inject({ method: 'GET', url: '/api/schedule/tasks?threadId=abc123' });
+      assert.equal(res.statusCode, 200);
+      const body = JSON.parse(res.payload);
+      assert.ok(!body.tasks.some((task) => task.id === 'review-feedback'));
+    });
+
     it('does not leak cross-thread PR summaries via subjectKind fallback once a task has runs', async () => {
       taskStore.upsertBySubject({
         kind: 'pr_tracking',

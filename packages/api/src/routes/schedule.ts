@@ -70,19 +70,18 @@ export const scheduleRoutes: FastifyPluginAsync<ScheduleRoutesOptions> = async (
     // Build set of subjectKeys for tasks in this thread
     const threadTasks = await taskStore.listByThread(threadId);
     const threadSubjectKeys = new Set<string>();
+    const activeThreadSubjectKinds = new Set<string>();
     for (const t of threadTasks) {
       if (t.subjectKey) addSubjectKeyWithAliases(threadSubjectKeys, t.subjectKey);
+      if (t.status === 'done' || !t.subjectKey) continue;
+      if (t.subjectKey.startsWith('pr:') || t.subjectKey.startsWith('pr-')) activeThreadSubjectKinds.add('pr');
+      else if (t.subjectKey.startsWith('thread:') || t.subjectKey.startsWith('thread-')) {
+        activeThreadSubjectKinds.add('thread');
+      }
     }
     // Also match thread-prefixed subject keys (dynamic/thread-scoped tasks)
     threadSubjectKeys.add(`thread-${threadId}`);
     threadSubjectKeys.add(`thread:${threadId}`);
-
-    // Derive which subject kinds exist in the thread (e.g. 'pr' if any pr:* keys)
-    const threadSubjectKinds = new Set<string>();
-    for (const sk of threadSubjectKeys) {
-      if (sk.startsWith('pr:') || sk.startsWith('pr-')) threadSubjectKinds.add('pr');
-      else if (sk.startsWith('thread:') || sk.startsWith('thread-')) threadSubjectKinds.add('thread');
-    }
 
     // P1-2 fix: don't rely solely on lastRun — query ledger for ANY matching run.
     // Also include tasks whose subjectKind matches even with zero runs (newly registered).
@@ -97,7 +96,7 @@ export const scheduleRoutes: FastifyPluginAsync<ScheduleRoutesOptions> = async (
       }
       // Zero-run path only: newly registered tasks should show up immediately,
       // but once a task has runs we must not leak it across threads by subject kind.
-      if (!s.lastRun && s.display?.subjectKind && threadSubjectKinds.has(s.display.subjectKind)) return true;
+      if (!s.lastRun && s.display?.subjectKind && activeThreadSubjectKinds.has(s.display.subjectKind)) return true;
       return false;
     });
 
