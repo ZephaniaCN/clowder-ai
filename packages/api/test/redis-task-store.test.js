@@ -812,14 +812,14 @@ describe('RedisTaskStore unit behavior', () => {
     const firstWriteBlocked = new Promise((resolve) => {
       releaseFirstWrite = resolve;
     });
-    const originalHset = redis.hset.bind(redis);
+    const originalEval = redis.eval.bind(redis);
     let blocked = false;
-    redis.hset = async (key, value) => {
-      if (!blocked && key.startsWith(TaskKeys.detail(''))) {
+    redis.eval = async (script, numKeys, ...keysAndArgs) => {
+      if (!blocked && script.includes("redis.call('HSET'")) {
         blocked = true;
         await firstWriteBlocked;
       }
-      return originalHset(key, value);
+      return originalEval(script, numKeys, ...keysAndArgs);
     };
 
     const first = store.upsertBySubject({
