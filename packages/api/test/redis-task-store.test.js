@@ -48,16 +48,32 @@ class FakeRedisForTaskStore {
     return 1;
   }
 
-  async eval(script, _numKeys, key, ...args) {
+  async eval(script, _numKeys, ...keysAndArgs) {
+    if (script.includes("redis.call('HSET'") && script.includes("redis.call('ZADD'")) {
+      // Atomic owned write: KEYS=[subject, detail, thread, kind], ARGV=[taskId, score, ...fields]
+      const [subjectKey, detailKey, threadKey, kindKey, expectedId, score, ...flatFields] = keysAndArgs;
+      if ((this.strings.get(subjectKey) ?? null) !== expectedId) return 0;
+      const hash = {};
+      for (let i = 0; i < flatFields.length; i += 2) hash[flatFields[i]] = flatFields[i + 1];
+      this.hashes.set(detailKey, { ...(this.hashes.get(detailKey) ?? {}), ...hash });
+      this.bumpVersion(detailKey);
+      const threadSet = this.sortedSets.get(threadKey) ?? new Map();
+      threadSet.set(expectedId, Number(score));
+      this.sortedSets.set(threadKey, threadSet);
+      const kindSet = this.sortedSets.get(kindKey) ?? new Map();
+      kindSet.set(expectedId, Number(score));
+      this.sortedSets.set(kindKey, kindSet);
+      return 1;
+    }
     if (script.includes("redis.call('set'")) {
-      const [expectedValue, nextValue] = args;
+      const [key, expectedValue, nextValue] = keysAndArgs;
       if ((this.strings.get(key) ?? null) !== expectedValue) return 0;
       this.strings.set(key, nextValue);
       this.bumpVersion(key);
       return 1;
     }
     if (script.includes("redis.call('del'")) {
-      const [expectedValue] = args;
+      const [key, expectedValue] = keysAndArgs;
       if ((this.strings.get(key) ?? null) !== expectedValue) return 0;
       this.strings.delete(key);
       this.bumpVersion(key);

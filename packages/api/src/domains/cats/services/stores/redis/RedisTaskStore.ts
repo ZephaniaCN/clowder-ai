@@ -24,6 +24,28 @@ const MAX_SUBJECT_LOOKUP_NULL_RETRIES = 3;
 const MAX_MISSING_TASK_RETRIES = 3;
 const MAX_AUTOMATION_STATE_PATCH_RETRIES = 5;
 
+/**
+ * Lua script: atomically verify subject ownership then write task artifacts.
+ * If the subject key doesn't map to the expected task ID, nothing is written.
+ *
+ * KEYS[1] = tasks:subject:{sk}
+ * KEYS[2] = tasks:detail:{id}
+ * KEYS[3] = tasks:thread:{threadId}
+ * KEYS[4] = tasks:kind:{kind}
+ * ARGV[1] = expected task.id
+ * ARGV[2] = score (createdAt as string)
+ * ARGV[3..] = hash field-value pairs (flattened)
+ */
+const ATOMIC_OWNED_WRITE_LUA = `
+if redis.call('GET', KEYS[1]) ~= ARGV[1] then
+  return 0
+end
+redis.call('HSET', KEYS[2], unpack(ARGV, 3, #ARGV))
+redis.call('ZADD', KEYS[3], ARGV[2], ARGV[1])
+redis.call('ZADD', KEYS[4], ARGV[2], ARGV[1])
+return 1
+`;
+
 export class RedisTaskStore implements ITaskStore {
   private readonly redis: RedisClient;
   private readonly ttlSeconds: number | null;
@@ -313,13 +335,26 @@ export class RedisTaskStore implements ITaskStore {
     const key = TaskKeys.detail(task.id);
 
     if (shouldVerifyOwnership) {
-      const subjectIndexKey = TaskKeys.subject(subjectKey!);
-      await this.redis.watch(subjectIndexKey);
-      const ownerTaskId = await this.redis.get(subjectIndexKey);
-      if (ownerTaskId !== task.id) {
-        await this.redis.unwatch();
-        return false;
+      // Atomic ownership check + artifact write via Lua — no post-write window.
+      const serialized = this.serializeTask(task);
+      const flatFields: string[] = [];
+      for (const [k, v] of Object.entries(serialized)) {
+        flatFields.push(k, v);
       }
+      const ok = await this.redis.eval(
+        ATOMIC_OWNED_WRITE_LUA,
+        4,
+        TaskKeys.subject(subjectKey!),
+        key,
+        TaskKeys.thread(task.threadId),
+        TaskKeys.kind(task.kind),
+        task.id,
+        String(task.createdAt),
+        ...flatFields,
+      );
+      if (!ok) return false;
+      await this.applyTtl(task);
+      return true;
     }
 
     const pipeline = this.redis.multi();
@@ -329,20 +364,8 @@ export class RedisTaskStore implements ITaskStore {
     if ((options?.syncSubject ?? true) && subjectKey) {
       pipeline.set(TaskKeys.subject(subjectKey), task.id);
     }
-    const result = await pipeline.exec();
-    if (!result) {
-      return false;
-    }
+    await pipeline.exec();
     await this.applyTtl(task);
-
-    if (shouldVerifyOwnership) {
-      const ownerTaskId = await this.redis.get(TaskKeys.subject(subjectKey!));
-      if (ownerTaskId !== task.id) {
-        await this.removeTaskArtifacts(task);
-        return false;
-      }
-    }
-
     return true;
   }
 
