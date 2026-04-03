@@ -32,7 +32,7 @@ community_issue: https://github.com/zts212653/clowder-ai/issues/14
 - 2026-03-19：已吸收 `clowder-ai#128` 的 Linux TTY/install/runtime 修复（cat-cafe PR #565），保留内部 runtime 语义并补齐回归测试
 - 2026-03-19：post-review follow-up（cat-cafe PR #566）已合入，补齐 `/workspace` provider-profile sharing 边界，并修正 installer completion banner 的家里端口口径
 
-### Phase B: macOS 一键安装（PR #174，CI 全绿，待合入）
+### Phase B: macOS 一键安装（PR #174，已 rebase，待合入）
 
 **同一个 `scripts/install.sh` 的 Darwin 分支**（不是单独的 `install-mac.sh`）。macOS 无需 sudo，全程用户态安装。
 
@@ -178,7 +178,7 @@ QG 通过后追加的改动（均已 push 到 PR #299）：
 
 ## Post-Review Delta (Phase B, 2026-04-03)
 
-PR #174（head `90581a2f`，CI 全绿，待合入）review 期间追加的修复：
+PR #174（已 rebase 到最新 main，CI 状态以 GitHub PR 页面为准）review 期间追加的修复：
 
 | Commit | 改动 | 来源 |
 |--------|------|------|
