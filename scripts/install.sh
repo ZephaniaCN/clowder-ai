@@ -568,7 +568,7 @@ case "$PLATFORM" in
         if ! command -v brew &>/dev/null; then
             info "  Homebrew not found — installing..."
             info "  (Homebrew may ask for your macOS password — that's normal, don't re-run with sudo)"
-            NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" </dev/null
+            NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL --connect-timeout 15 --max-time 60 https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" </dev/null
             for _brew in "${_brew_candidates[@]}"; do
                 if [[ -x "$_brew" ]]; then
                     eval "$("$_brew" shellenv)"

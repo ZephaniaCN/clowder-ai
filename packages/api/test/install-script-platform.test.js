@@ -50,6 +50,14 @@ test('install script detects Homebrew on Apple Silicon and Intel paths', () => {
   assert.match(installScriptText, /\/usr\/local\/bin\/brew/);
 });
 
+test('homebrew install curl has connect timeout to avoid hanging on unreachable networks', () => {
+  assert.match(
+    installScriptText,
+    /curl.*--connect-timeout.*--max-time.*Homebrew/,
+    'Homebrew install curl must have connect-timeout and max-time to fail fast on unreachable networks',
+  );
+});
+
 test('install script installs Xcode CLT on macOS when missing', () => {
   assert.match(installScriptText, /xcode-select/);
 });
