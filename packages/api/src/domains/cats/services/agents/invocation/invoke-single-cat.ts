@@ -718,6 +718,8 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
       opencode: 'anthropic',
       openai: 'openai',
       google: 'google',
+      kimi: 'kimi',
+      omx: 'openai',
       dare: 'openai',
     };
     const effectiveProtocol =
@@ -788,6 +790,17 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
         if (resolvedAccount.baseUrl) {
           callbackEnv.GEMINI_BASE_URL = resolvedAccount.baseUrl;
         }
+      }
+    } else if (effectiveProtocol === 'kimi') {
+      if (resolvedAccount?.authType === 'api_key' && resolvedAccount.apiKey) {
+        callbackEnv.CAT_CAFE_KIMI_PROFILE_MODE = 'api_key';
+        callbackEnv.CAT_CAFE_KIMI_API_KEY = resolvedAccount.apiKey;
+        callbackEnv.MOONSHOT_API_KEY = resolvedAccount.apiKey;
+        if (resolvedAccount.baseUrl) {
+          callbackEnv.CAT_CAFE_KIMI_BASE_URL = resolvedAccount.baseUrl;
+        }
+      } else {
+        callbackEnv.CAT_CAFE_KIMI_PROFILE_MODE = 'subscription';
       }
     } else if (provider === 'anthropic' || provider === 'opencode') {
       // Fallback for unresolved accounts on anthropic/opencode providers

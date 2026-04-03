@@ -18,9 +18,11 @@ import {
   readClaudeMcpConfig,
   readCodexMcpConfig,
   readGeminiMcpConfig,
+  readKimiMcpConfig,
   writeClaudeMcpConfig,
   writeCodexMcpConfig,
   writeGeminiMcpConfig,
+  writeKimiMcpConfig,
 } from './mcp-config-adapters.js';
 
 // ────────── Constants ──────────
@@ -103,6 +105,8 @@ const PROVIDER_WRITERS = {
   anthropic: writeClaudeMcpConfig,
   openai: writeCodexMcpConfig,
   google: writeGeminiMcpConfig,
+  kimi: writeKimiMcpConfig,
+  omx: writeCodexMcpConfig,
 } as const;
 
 /** Check if a descriptor has a usable transport (stdio command, local resolver, or streamableHttp URL). */
@@ -331,6 +335,7 @@ export interface DiscoveryPaths {
   claudeConfig: string; // e.g. <projectRoot>/.mcp.json
   codexConfig: string; // e.g. <projectRoot>/.codex/config.toml
   geminiConfig: string; // e.g. <projectRoot>/.gemini/settings.json
+  kimiConfig: string; // e.g. <projectRoot>/.kimi/mcp.json
 }
 
 /**
@@ -338,13 +343,14 @@ export interface DiscoveryPaths {
  * Merges by name; if same name appears in multiple, first wins.
  */
 export async function discoverExternalMcpServers(paths: DiscoveryPaths): Promise<McpServerDescriptor[]> {
-  const [claude, codex, gemini] = await Promise.all([
+  const [claude, codex, gemini, kimi] = await Promise.all([
     readClaudeMcpConfig(paths.claudeConfig),
     readCodexMcpConfig(paths.codexConfig),
     readGeminiMcpConfig(paths.geminiConfig),
+    readKimiMcpConfig(paths.kimiConfig),
   ]);
   return deduplicateDiscoveredMcpServers(
-    [...claude, ...codex, ...gemini]
+    [...claude, ...codex, ...gemini, ...kimi]
       .filter((server) => hasUsableTransport(server))
       .map((server) => ({ ...server, source: 'external' as const })),
   );
@@ -548,10 +554,12 @@ export interface CliConfigPaths {
   anthropic: string; // e.g. <projectRoot>/.mcp.json
   openai: string; // e.g. <projectRoot>/.codex/config.toml
   google: string; // e.g. <projectRoot>/.gemini/settings.json
+  kimi: string; // e.g. <projectRoot>/.kimi/mcp.json
+  omx: string; // e.g. <projectRoot>/.codex/config.toml
 }
 
 /** Providers that support streamableHttp transport (URL-based MCP). */
-const STREAMABLE_HTTP_PROVIDERS = new Set(['anthropic']);
+const STREAMABLE_HTTP_PROVIDERS = new Set(['anthropic', 'kimi']);
 
 /**
  * Resolve effective MCP servers for a specific cat.
@@ -606,7 +614,7 @@ function collectServersPerProvider(config: CapabilitiesConfig): Record<string, M
   for (const catId of catRegistry.getAllIds()) {
     const entry = catRegistry.tryGet(catId as string);
     if (!entry) continue;
-    const provider = entry.config.provider;
+    const provider = entry.config.provider === 'omx' ? 'openai' : entry.config.provider;
 
     if (!providerServers[provider]) {
       providerServers[provider] = new Map();

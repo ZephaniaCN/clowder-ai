@@ -10,7 +10,7 @@ import { readCredential } from './credentials.js';
 
 // ── Types surviving from provider-profiles.types.ts (F136 Phase 4d) ──
 
-export type BuiltinAccountClient = 'anthropic' | 'openai' | 'google' | 'dare' | 'opencode';
+export type BuiltinAccountClient = 'anthropic' | 'openai' | 'google' | 'kimi' | 'dare' | 'opencode';
 export type ProviderProfileKind = 'builtin' | 'api_key';
 
 export interface RuntimeProviderProfile {
@@ -37,9 +37,12 @@ export function resolveBuiltinClientForProvider(provider: CatProvider): BuiltinA
     case 'anthropic':
     case 'openai':
     case 'google':
+    case 'kimi':
     case 'dare':
     case 'opencode':
       return provider;
+    case 'omx':
+      return 'openai';
     default:
       return null;
   }
@@ -51,6 +54,7 @@ const LEGACY_BUILTIN_IDS: Record<BuiltinAccountClient, string> = {
   anthropic: 'claude',
   openai: 'codex',
   google: 'gemini',
+  kimi: 'kimi',
   dare: 'dare',
   opencode: 'opencode',
 };
@@ -77,6 +81,7 @@ const PROTOCOL_ENV_KEY_MAP: Record<AccountProtocol, string> = {
   openai: 'OPENAI_API_KEY',
   'openai-responses': 'OPENAI_API_KEY',
   google: 'GOOGLE_API_KEY',
+  kimi: 'MOONSHOT_API_KEY',
 };
 
 function protocolToClient(protocol: AccountProtocol): BuiltinAccountClient {
@@ -96,6 +101,9 @@ const BUILTIN_ACCOUNT_MAP: Record<string, { client: BuiltinAccountClient; protoc
   builtin_openai: { client: 'openai', protocol: 'openai' },
   gemini: { client: 'google', protocol: 'google' },
   builtin_google: { client: 'google', protocol: 'google' },
+  kimi: { client: 'kimi', protocol: 'kimi' },
+  builtin_kimi: { client: 'kimi', protocol: 'kimi' },
+  omx: { client: 'openai', protocol: 'openai' },
   dare: { client: 'dare', protocol: 'openai' },
   builtin_dare: { client: 'dare', protocol: 'openai' },
   opencode: { client: 'opencode', protocol: 'anthropic' },
@@ -180,7 +188,8 @@ function normalizeProtocol(clientOrProtocol: string): AccountProtocol {
     clientOrProtocol === 'anthropic' ||
     clientOrProtocol === 'openai' ||
     clientOrProtocol === 'openai-responses' ||
-    clientOrProtocol === 'google'
+    clientOrProtocol === 'google' ||
+    clientOrProtocol === 'kimi'
   ) {
     return clientOrProtocol;
   }
@@ -221,6 +230,10 @@ function expectedProtocolForProvider(provider: CatProvider): AccountProtocol | n
       return 'openai';
     case 'google':
       return 'google';
+    case 'kimi':
+      return 'kimi';
+    case 'omx':
+      return 'openai';
     case 'dare':
       return 'openai';
     case 'opencode':
