@@ -242,6 +242,27 @@ test('api-key mode maps selected model into official kimi env overrides', async 
   }
 });
 
+test('subscription mode clears inherited kimi key env vars', async () => {
+  const proc = createMockProcess();
+  const spawnFn = createMockSpawnFn(proc);
+  const service = new KimiAgentService({ spawnFn, model: 'kimi-code/kimi-for-coding' });
+
+  const promise = collect(
+    service.invoke('Hello', {
+      callbackEnv: {
+        KIMI_API_KEY: 'inherited-kimi',
+        MOONSHOT_API_KEY: 'inherited-moonshot',
+      },
+    }),
+  );
+  emitKimiEvents(proc, [{ role: 'assistant', content: 'ok' }]);
+  await promise;
+
+  const env = spawnFn.mock.calls[0].arguments[2]?.env ?? {};
+  assert.equal(env.KIMI_API_KEY, undefined);
+  assert.equal(env.MOONSHOT_API_KEY, undefined);
+});
+
 test('injects cat-cafe MCP config file when callback env is present', async () => {
   const shareDir = mkdtempSync(join(tmpdir(), 'kimi-share-mcp-'));
   const projectDir = mkdtempSync(join(tmpdir(), 'kimi-project-mcp-'));

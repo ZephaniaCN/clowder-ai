@@ -11,9 +11,9 @@
  */
 
 import { execFile } from 'node:child_process';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, normalize, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
@@ -334,13 +334,24 @@ function resolveKimiShareDir(env: NodeJS.ProcessEnv = process.env): string {
   return env[KIMI_SHARE_DIR_ENV] || join(homedir(), '.kimi');
 }
 
+function normalizeKimiWorkDirPath(pathValue: string): string {
+  const resolved = resolve(pathValue);
+  try {
+    return normalize(realpathSync.native ? realpathSync.native(resolved) : realpathSync(resolved));
+  } catch {
+    return normalize(resolved);
+  }
+}
+
 function resolvePreferredKimiSessionWireFile(shareDir: string, workingDirectory: string = process.cwd()): string | null {
   const statePath = join(shareDir, 'kimi.json');
   try {
     const raw = JSON.parse(readFileSync(statePath, 'utf-8')) as { work_dirs?: Array<Record<string, unknown>> };
     const workDirs = Array.isArray(raw?.work_dirs) ? raw.work_dirs : [];
-    const target = workingDirectory;
-    const entry = workDirs.find((item) => typeof item.path === 'string' && item.path === target);
+    const target = normalizeKimiWorkDirPath(workingDirectory);
+    const entry = workDirs.find(
+      (item) => typeof item.path === 'string' && normalizeKimiWorkDirPath(item.path) === target,
+    );
     const sessionId = typeof entry?.last_session_id === 'string' ? entry.last_session_id.trim() : '';
     if (!sessionId) return null;
     const sessionsDir = join(shareDir, 'sessions');
@@ -457,7 +468,7 @@ function refreshKimiQuotaFromLocalState(env: NodeJS.ProcessEnv = process.env): v
     usageItems.push({
       label: '缓存读取命中',
       usedPercent: 100,
-      percentKind: 'used',
+      percentKind: 'remaining',
       poolId: 'kimi-cache',
       resetsText: `${status.cacheReadTokens} cache tokens`,
     });

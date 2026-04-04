@@ -255,10 +255,21 @@ function buildApiKeyEnv(model: string, callbackEnv?: Record<string, string>): Re
   const configuredModelName = model.trim();
   return {
     KIMI_API_KEY: apiKey,
+    MOONSHOT_API_KEY: apiKey,
     KIMI_BASE_URL: baseUrl,
     KIMI_MODEL_NAME: configuredModelName,
     KIMI_MODEL_MAX_CONTEXT_SIZE: callbackEnv?.KIMI_MODEL_MAX_CONTEXT_SIZE || '262144',
     ...(callbackEnv?.KIMI_MODEL_CAPABILITIES ? { KIMI_MODEL_CAPABILITIES: callbackEnv.KIMI_MODEL_CAPABILITIES } : {}),
+  };
+}
+
+function clearInheritedKimiAuthEnv(env: Record<string, string>): Record<string, string | null> {
+  return {
+    ...env,
+    KIMI_API_KEY: null,
+    MOONSHOT_API_KEY: null,
+    CAT_CAFE_KIMI_API_KEY: null,
+    CAT_CAFE_KIMI_BASE_URL: null,
   };
 }
 
@@ -337,13 +348,16 @@ export class KimiAgentService implements AgentService {
       let emittedSessionInit = Boolean(options?.sessionId);
       let emittedThinkingUnavailable = false;
       let emittedImageCapability = false;
+      const childEnv = apiKeyEnv
+        ? { ...(options?.callbackEnv ?? {}), ...(apiKeyEnv ?? {}) }
+        : options?.callbackEnv
+          ? clearInheritedKimiAuthEnv(options.callbackEnv)
+          : undefined;
       const cliOpts = {
         command: kimiCommand,
         args,
         ...(options?.workingDirectory ? { cwd: options.workingDirectory } : {}),
-        ...((options?.callbackEnv || apiKeyEnv)
-          ? { env: { ...(options?.callbackEnv ?? {}), ...(apiKeyEnv ?? {}) } }
-          : {}),
+        ...(childEnv ? { env: childEnv } : {}),
         ...(options?.signal ? { signal: options.signal } : {}),
         ...(options?.invocationId ? { invocationId: options.invocationId } : {}),
         ...(options?.cliSessionId ? { cliSessionId: options.cliSessionId } : {}),
