@@ -609,8 +609,8 @@ describe('HubCatEditor', () => {
     await flushEffects();
     const providerSelect = queryField<HTMLSelectElement>(container, 'select[aria-label="认证信息"]');
     const optionLabels = Array.from(providerSelect.options).map((option) => option.textContent ?? '');
-    expect(optionLabels).toContain('Codex (OAuth)（内置）');
-    expect(optionLabels).toContain('Claude Sponsor（API Key）');
+    expect(optionLabels).toContain('Codex (OAuth)（CLI 内置）');
+    expect(optionLabels).toContain('Claude Sponsor（CLI 配置）');
   });
 
   it('keeps builtin accounts client-specific while exposing all API key accounts', () => {
