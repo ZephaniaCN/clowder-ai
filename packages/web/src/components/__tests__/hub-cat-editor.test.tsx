@@ -783,7 +783,7 @@ describe('HubCatEditor', () => {
     expect(builtinAccountIdForClient('omx')).toBeNull();
   });
 
-  it('filters Kimi profiles as builtin-only and excludes OMX from builtin bindings', () => {
+  it('lets Kimi reuse builtin and API-key profiles while OMX stays unbound', () => {
     const profiles: ProfileItem[] = [
       {
         id: 'kimi',
@@ -816,9 +816,24 @@ describe('HubCatEditor', () => {
         createdAt: '2026-03-18T00:00:00.000Z',
         updatedAt: '2026-03-18T00:00:00.000Z',
       },
+      {
+        id: 'codex-sponsor',
+        provider: 'codex-sponsor',
+        displayName: 'Codex Sponsor',
+        name: 'Codex Sponsor',
+        authType: 'api_key',
+        protocol: 'openai',
+        kind: 'api_key',
+        builtin: false,
+        mode: 'api_key',
+        models: ['gpt-5.4'],
+        hasApiKey: true,
+        createdAt: '2026-03-18T00:00:00.000Z',
+        updatedAt: '2026-03-18T00:00:00.000Z',
+      },
     ];
 
-    expect(filterProfiles('kimi', profiles).map((profile) => profile.id)).toEqual(['kimi']);
+    expect(filterProfiles('kimi', profiles).map((profile) => profile.id)).toEqual(['kimi', 'moonshot-sponsor']);
     expect(filterProfiles('omx', profiles)).toEqual([]);
   });
 
