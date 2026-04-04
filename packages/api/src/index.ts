@@ -11,7 +11,7 @@ import cors from '@fastify/cors';
 import fastifyWebsocket from '@fastify/websocket';
 import Fastify from 'fastify';
 import { resolveAnthropicRuntimeProfile, resolveForClient } from './config/account-resolver.js';
-import { orchestrate } from './config/capabilities/capability-orchestrator.js';
+import { generateCliConfigs, readCapabilitiesConfig } from './config/capabilities/capability-orchestrator.js';
 import { resolveBoundAccountRefForCat } from './config/cat-account-binding.js';
 import { getCatContextBudget } from './config/cat-budgets.js';
 import {
@@ -1463,30 +1463,22 @@ async function main(): Promise<void> {
     app.log.warn(`[api] Audit log write failed (best-effort): ${String(err)}`);
   }
 
-  // Best-effort: ensure capabilities bootstrap + CLI configs at startup so
-  // fresh runtime worktrees also get .cat-cafe/capabilities.json and .mcp.json
-  // without needing a manual GET /api/capabilities first.
+  // Best-effort: regenerate CLI configs at startup so .gemini/settings.json
+  // always has the latest env placeholders (Gemini MCP env injection)
   try {
     const root = process.cwd();
-    await orchestrate(
-      root,
-      {
-        claudeConfig: join(root, '.mcp.json'),
-        codexConfig: join(root, '.codex', 'config.toml'),
-        geminiConfig: join(root, '.gemini', 'settings.json'),
-        kimiConfig: join(root, '.kimi', 'mcp.json'),
-      },
-      {
+    const capConfig = await readCapabilitiesConfig(root);
+    if (capConfig) {
+      await generateCliConfigs(capConfig, {
         anthropic: join(root, '.mcp.json'),
         openai: join(root, '.codex', 'config.toml'),
         google: join(root, '.gemini', 'settings.json'),
         kimi: join(root, '.kimi', 'mcp.json'),
-      },
-      { catCafeRepoRoot: root },
-    );
-    app.log.info('[api] Capabilities + CLI configs ensured at startup');
+      });
+      app.log.info('[api] CLI configs regenerated at startup');
+    }
   } catch (err) {
-    app.log.warn(`[api] Capability/CLI bootstrap failed (best-effort): ${String(err)}`);
+    app.log.warn(`[api] CLI config regeneration failed (best-effort): ${String(err)}`);
   }
 
   // F136 Phase 4a: Migrate provider-profiles → accounts + conflict scan (HC-3/HC-5/LL-043).
