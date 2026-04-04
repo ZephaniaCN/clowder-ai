@@ -16,7 +16,7 @@
  *   读取当前 working directory 的 last_session_id 并补发 session_init。
  */
 
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { type CatId, createCatId } from '@cat-cafe/shared';
@@ -593,7 +593,9 @@ export class KimiAgentService implements AgentService {
       ...(Object.keys(catCafeEnv).length > 0 ? { env: catCafeEnv } : {}),
     };
     const nextConfig = { ...config, mcpServers: currentServers };
-    const dir = mkdtempSync(join(resolveKimiShareDir(callbackEnv), 'tmp-mcp-'));
+    const shareDir = resolveKimiShareDir(callbackEnv);
+    mkdirSync(shareDir, { recursive: true });
+    const dir = mkdtempSync(join(shareDir, 'tmp-mcp-'));
     const path = join(dir, 'mcp.json');
     writeFileSync(path, JSON.stringify(nextConfig), { encoding: 'utf8', mode: 0o600 });
     return path;

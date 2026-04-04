@@ -299,6 +299,49 @@ test('injects cat-cafe MCP config file when callback env is present', async () =
   }
 });
 
+test('creates Kimi share dir before writing temp MCP config on fresh setups', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'kimi-fresh-root-'));
+  const shareDir = join(root, 'does-not-exist-yet');
+  const projectDir = mkdtempSync(join(tmpdir(), 'kimi-fresh-project-'));
+  const mcpServerDir = mkdtempSync(join(tmpdir(), 'kimi-fresh-mcp-'));
+  const proc = createMockProcess();
+  const spawnFn = createMockSpawnFn(proc);
+  const service = new KimiAgentService({
+    spawnFn,
+    model: 'kimi-code/kimi-for-coding',
+    mcpServerPath: join(mcpServerDir, 'index.js'),
+  });
+
+  try {
+    writeFileSync(join(mcpServerDir, 'index.js'), '// stub', 'utf8');
+    const promise = collect(
+      service.invoke('Hello', {
+        workingDirectory: projectDir,
+        callbackEnv: {
+          KIMI_SHARE_DIR: shareDir,
+          CAT_CAFE_API_URL: 'http://127.0.0.1:3004',
+          CAT_CAFE_INVOCATION_ID: 'invoke-fresh',
+          CAT_CAFE_CALLBACK_TOKEN: 'token-fresh',
+        },
+      }),
+    );
+
+    const args = spawnFn.mock.calls[0].arguments[1];
+    const mcpFlagIndex = args.indexOf('--mcp-config-file');
+    assert.ok(mcpFlagIndex >= 0);
+    const mcpPath = args[mcpFlagIndex + 1];
+    assert.ok(readFileSync(mcpPath, 'utf8').includes('cat-cafe'));
+
+    emitKimiEvents(proc, [{ role: 'assistant', content: 'ok' }]);
+    const msgs = await promise;
+    assert.equal(msgs.at(-1)?.type, 'done');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(projectDir, { recursive: true, force: true });
+    rmSync(mcpServerDir, { recursive: true, force: true });
+  }
+});
+
 test('wraps system prompt separately and adds local image path hints', async () => {
   const proc = createMockProcess();
   const spawnFn = createMockSpawnFn(proc);
