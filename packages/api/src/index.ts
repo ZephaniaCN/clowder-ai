@@ -182,6 +182,7 @@ import { threadExportRoutes } from './routes/thread-export.js';
 import { ApiInstanceLease, type ApiInstanceLeaseInvalidation } from './services/ApiInstanceLease.js';
 import { findMonorepoRoot } from './utils/monorepo-root.js';
 import { resolveUserId } from './utils/request-identity.js';
+import { buildStartupCapabilityBootstrapPaths } from './utils/startup-capability-bootstrap.js';
 
 const PORT = parseInt(process.env.API_SERVER_PORT ?? '3004', 10);
 const HOST = process.env.API_SERVER_HOST ?? '127.0.0.1';
@@ -1467,23 +1468,8 @@ async function main(): Promise<void> {
   // fresh runtime worktrees also get .cat-cafe/capabilities.json and .mcp.json
   // without needing a manual GET /api/capabilities first.
   try {
-    const root = process.cwd();
-    await orchestrate(
-      root,
-      {
-        claudeConfig: join(root, '.mcp.json'),
-        codexConfig: join(root, '.codex', 'config.toml'),
-        geminiConfig: join(root, '.gemini', 'settings.json'),
-        kimiConfig: join(root, '.kimi', 'mcp.json'),
-      },
-      {
-        anthropic: join(root, '.mcp.json'),
-        openai: join(root, '.codex', 'config.toml'),
-        google: join(root, '.gemini', 'settings.json'),
-        kimi: join(root, '.kimi', 'mcp.json'),
-      },
-      { catCafeRepoRoot: root },
-    );
+    const { root, discoveryPaths, cliConfigPaths } = buildStartupCapabilityBootstrapPaths(process.cwd());
+    await orchestrate(root, discoveryPaths, cliConfigPaths, { catCafeRepoRoot: root });
     app.log.info('[api] Capabilities + CLI configs ensured at startup');
   } catch (err) {
     app.log.warn(`[api] Capability/CLI bootstrap failed (best-effort): ${String(err)}`);
