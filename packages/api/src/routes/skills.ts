@@ -2,7 +2,7 @@
  * Skills Route
  * GET /api/skills — Clowder AI 共享 Skills 看板数据
  *
- * 扫描 cat-cafe-skills/ 源目录，检查三猫 symlink 挂载状态，
+ * 扫描 cat-cafe-skills/ 源目录，检查 Claude/Codex/Gemini/Kimi provider symlink 挂载状态，
  * 解析 BOOTSTRAP.md 提取分类，解析 manifest.yaml 提取触发词。
  */
 
