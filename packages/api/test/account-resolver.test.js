@@ -156,6 +156,21 @@ describe('account-resolver (4b unified runtime resolution)', () => {
     assert.equal(profile.protocol, 'anthropic');
   });
 
+  it('resolveForClient prefers protocol match over stale builtin ref when exactly one concrete account exists', async () => {
+    const { resolveForClient } = await import(`../dist/config/account-resolver.js?t=${Date.now()}-6b`);
+    await writeCatalog({
+      'kimi-api': { authType: 'api_key', protocol: 'kimi', baseUrl: 'https://api.moonshot.ai/v1' },
+    });
+    await writeCredentials({ 'kimi-api': { apiKey: 'moonshot-key' } });
+
+    const profile = resolveForClient(projectRoot, 'kimi', 'kimi');
+    assert.ok(profile);
+    assert.equal(profile.id, 'kimi-api');
+    assert.equal(profile.kind, 'api_key');
+    assert.equal(profile.protocol, 'kimi');
+    assert.equal(profile.apiKey, 'moonshot-key');
+  });
+
   it('resolveForClient prefers preferredAccountRef when provided', async () => {
     const { resolveForClient } = await import(`../dist/config/account-resolver.js?t=${Date.now()}-6`);
     await writeCatalog({
