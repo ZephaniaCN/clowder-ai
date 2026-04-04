@@ -229,30 +229,34 @@ interface SkillScanPlan {
   exclude?: string[];
 }
 
-async function scanProviderSkillDirs(plans: SkillScanPlan[]): Promise<{
+export async function scanProviderSkillDirs(plans: SkillScanPlan[]): Promise<{
   providerSkills: Record<string, string[]>;
   scanResults: Record<string, string[] | null>;
   scansOk: boolean;
 }> {
   const providerSkills: Record<string, string[]> = {};
   const scanResults: Record<string, string[] | null> = {};
-  let scansOk = true;
 
   for (const plan of plans) {
     if (!providerSkills[plan.provider]) providerSkills[plan.provider] = [];
   }
 
-  await Promise.all(
+  const results = await Promise.all(
     plans.map(async (plan) => {
       const names = await listSkillSubdirs(plan.path, plan.exclude);
-      scanResults[plan.key] = names;
-      if (names === null) {
-        scansOk = false;
-        return;
-      }
-      providerSkills[plan.provider] = [...new Set([...(providerSkills[plan.provider] ?? []), ...names])];
+      return { plan, names };
     }),
   );
+
+  let scansOk = true;
+  for (const { plan, names } of results) {
+    scanResults[plan.key] = names;
+    if (names === null) {
+      scansOk = false;
+      continue;
+    }
+    providerSkills[plan.provider] = [...new Set([...(providerSkills[plan.provider] ?? []), ...names])];
+  }
 
   return { providerSkills, scanResults, scansOk };
 }
@@ -527,8 +531,8 @@ export const capabilitiesRoutes: FastifyPluginAsync = async (app) => {
       { key: 'kimi-user', provider: 'kimi', path: join(home, '.kimi', 'skills') },
     ];
     const { providerSkills, scanResults, scansOk: allScansOk } = await scanProviderSkillDirs(skillScanPlans);
-    const claudeProjectSkills = scanResults['claude-project'] ?? [];
-    const projectKimiSkills = scanResults['kimi-project'] ?? [];
+    const claudeProjectSkills = scanResults['claude-project'];
+    const projectKimiSkills = scanResults['kimi-project'];
 
     // F041 bug fix: Also scan cat-cafe-skills/ for project-level skill detection.
     // User-level skills (e.g. ~/.claude/skills/feat-completion) are symlinks to
@@ -538,7 +542,11 @@ export const capabilitiesRoutes: FastifyPluginAsync = async (app) => {
     const catCafeOwnSkills = await listSkillSubdirs(catCafeSkillsDir);
     const hasProjectCatCafeSkillsDir = existsSync(catCafeSkillsDir);
 
-    const projectSkillNames = new Set([...claudeProjectSkills, ...projectKimiSkills, ...(catCafeOwnSkills ?? [])]);
+    const projectSkillNames = new Set([
+      ...(claudeProjectSkills ?? []),
+      ...(projectKimiSkills ?? []),
+      ...(catCafeOwnSkills ?? []),
+    ]);
 
     // 3. Sync discovered skills into capabilities.json
     const allSkillNames = new Set<string>();
@@ -579,7 +587,8 @@ export const capabilitiesRoutes: FastifyPluginAsync = async (app) => {
         !shouldBeCatCafe &&
         cap.source === 'cat-cafe' &&
         catCafeOwnSkills !== null &&
-        claudeProjectSkills !== null
+        claudeProjectSkills !== null &&
+        projectKimiSkills !== null
       ) {
         cap.source = 'external';
         configDirty = true;
