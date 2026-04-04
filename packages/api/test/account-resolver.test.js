@@ -193,6 +193,21 @@ describe('account-resolver (4b unified runtime resolution)', () => {
     assert.equal(profile, null);
   });
 
+  it('resolveForClient returns synthetic builtin omx even when openai accounts are ambiguous', async () => {
+    const { resolveForClient } = await import(`../dist/config/account-resolver.js?t=${Date.now()}-11`);
+    await writeCatalog({
+      codex: { authType: 'oauth', protocol: 'openai' },
+      'openai-backup': { authType: 'api_key', protocol: 'openai', displayName: 'OpenAI Backup' },
+    });
+    await writeCredentials({ 'openai-backup': { apiKey: 'sk-openai-backup' } });
+
+    const profile = resolveForClient(projectRoot, 'openai', 'omx');
+    assert.ok(profile);
+    assert.equal(profile.id, 'omx');
+    assert.equal(profile.kind, 'builtin');
+    assert.equal(profile.authType, 'oauth');
+  });
+
   it('resolveForClient returns the account when only one matches protocol', async () => {
     const { resolveForClient } = await import(`../dist/config/account-resolver.js?t=${Date.now()}-9`);
     await writeCatalog({

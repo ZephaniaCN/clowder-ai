@@ -150,6 +150,16 @@ export function resolveForClient(
   if (preferredAccountRef) {
     const preferred = accounts[preferredAccountRef];
     if (preferred) return accountToRuntimeProfile(preferredAccountRef, preferred);
+    const builtin = BUILTIN_ACCOUNT_MAP[preferredAccountRef];
+    if (builtin) {
+      return {
+        id: preferredAccountRef,
+        authType: 'oauth',
+        kind: 'builtin',
+        client: builtin.client,
+        protocol: builtin.protocol,
+      };
+    }
   }
 
   // Find accounts matching the protocol — return only if unambiguous (exactly one match)
@@ -162,21 +172,6 @@ export function resolveForClient(
   }
   if (matches.length === 1) {
     return accountToRuntimeProfile(matches[0][0], matches[0][1]);
-  }
-
-  // Synthetic builtin fallback: only when no real accounts match the protocol
-  // (e.g. fresh install before migration, or test env with no catalog)
-  if (preferredAccountRef && matches.length === 0) {
-    const builtin = BUILTIN_ACCOUNT_MAP[preferredAccountRef];
-    if (builtin) {
-      return {
-        id: preferredAccountRef,
-        authType: 'oauth',
-        kind: 'builtin',
-        client: builtin.client,
-        protocol: builtin.protocol,
-      };
-    }
   }
 
   // 0 matches = no account configured; >1 = ambiguous → fall through to legacy

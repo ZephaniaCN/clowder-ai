@@ -177,3 +177,27 @@ test('maps bare oauth kimi model names to configured model alias', async () => {
     rmSync(shareDir, { recursive: true, force: true });
   }
 });
+
+test('api-key mode passes config file path instead of embedding secrets in argv', async () => {
+  const proc = createMockProcess();
+  const spawnFn = createMockSpawnFn(proc);
+  const service = new KimiAgentService({ spawnFn, model: 'kimi-code/kimi-for-coding' });
+
+  const promise = collect(
+    service.invoke('Hello', {
+      callbackEnv: {
+        CAT_CAFE_KIMI_API_KEY: 'sk-kimi-secret',
+        CAT_CAFE_KIMI_BASE_URL: 'https://api.moonshot.ai/v1',
+        KIMI_SHARE_DIR: mkdtempSync(join(tmpdir(), 'kimi-share-api-key-')),
+      },
+    }),
+  );
+  emitKimiEvents(proc, [{ role: 'assistant', content: 'ok' }]);
+  await promise;
+
+  const args = spawnFn.mock.calls[0].arguments[1];
+  const joined = args.join(' ');
+  assert.ok(args.includes('--config-file'));
+  assert.ok(!joined.includes('sk-kimi-secret'));
+  assert.ok(!joined.includes('"api_key"'));
+});

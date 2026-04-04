@@ -16,7 +16,7 @@
  *   读取当前 working directory 的 last_session_id 并补发 session_init。
  */
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { type CatId, createCatId } from '@cat-cafe/shared';
@@ -149,6 +149,18 @@ function buildInlineApiKeyConfig(model: string, callbackEnv?: Record<string, str
   });
 }
 
+function writeApiKeyConfigFile(
+  model: string,
+  callbackEnv?: Record<string, string>,
+): { configDir: string; configPath: string } | null {
+  const apiKeyConfig = buildInlineApiKeyConfig(model, callbackEnv);
+  if (!apiKeyConfig) return null;
+  const configDir = mkdtempSync(join(resolveKimiShareDir(callbackEnv), 'tmp-config-'));
+  const configPath = join(configDir, 'config.json');
+  writeFileSync(configPath, apiKeyConfig, { encoding: 'utf8', mode: 0o600 });
+  return { configDir, configPath };
+}
+
 export class KimiAgentService implements AgentService {
   readonly catId: CatId;
   private readonly spawnFn: SpawnFn | undefined;
@@ -166,6 +178,7 @@ export class KimiAgentService implements AgentService {
     const metadata: MessageMetadata = { provider: 'kimi', model: effectiveModel };
     const effectivePrompt = options?.systemPrompt ? `${options.systemPrompt}\n\n${prompt}` : prompt;
     const workingDirectory = options?.workingDirectory ?? process.cwd();
+    const tempConfig = writeApiKeyConfigFile(effectiveModel, options?.callbackEnv);
 
     const args = ['--print', '--output-format', 'stream-json', '--model', effectiveModel];
     if (options?.sessionId) {
@@ -181,9 +194,8 @@ export class KimiAgentService implements AgentService {
     }
     args.push('--work-dir', workingDirectory);
     args.push(...buildProjectMcpArgs(workingDirectory));
-    const inlineConfig = buildInlineApiKeyConfig(effectiveModel, options?.callbackEnv);
-    if (inlineConfig) {
-      args.push('--config', inlineConfig);
+    if (tempConfig) {
+      args.push('--config-file', tempConfig.configPath);
     }
     args.push('--prompt', effectivePrompt);
 
@@ -332,6 +344,14 @@ export class KimiAgentService implements AgentService {
         timestamp: Date.now(),
       };
       yield { type: 'done', catId: this.catId, metadata, timestamp: Date.now() };
+    } finally {
+      if (tempConfig) {
+        try {
+          rmSync(tempConfig.configDir, { recursive: true, force: true });
+        } catch {
+          // best-effort cleanup
+        }
+      }
     }
   }
 }
