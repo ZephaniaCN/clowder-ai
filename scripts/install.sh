@@ -827,7 +827,7 @@ configure_agent_auth() {
 if [[ "$HAS_TTY" == true ]]; then
     info "  Configure each agent / 逐个配置每只猫的认证方式："
     configure_agent_auth "Claude (布偶猫)" "claude"; configure_agent_auth "Codex (缅因猫)" "codex"
-    configure_agent_auth "Gemini (暹罗猫)" "gemini"; configure_agent_auth "Kimi (月之暗面)" "kimi"
+    configure_agent_auth "Gemini (暹罗猫)" "gemini"; configure_agent_auth "Kimi (金吉拉猫)" "kimi"
 else
     info "  Non-interactive — skipping auth. Run each CLI to log in: claude / codex / gemini / kimi"
 fi

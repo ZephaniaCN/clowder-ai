@@ -58,10 +58,16 @@ Clowder 不绑定模型。当前支持的 Agent CLI：
 | [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | Claude (Opus / Sonnet / Haiku) | stream-json | 是 | 已发布 |
 | [Codex CLI](https://github.com/openai/codex) | GPT / Codex | json | 是 | 已发布 |
 | [Gemini CLI](https://github.com/google-gemini/gemini-cli) | Gemini | stream-json | 是 | 已发布 |
+| [Kimi CLI](https://github.com/MoonshotAI/kimi-cli) | Kimi / Moonshot | stream-json | 是 | 已发布 |
 | [Antigravity](https://github.com/nolanzandi/antigravity-cli) | 多模型 | cdp-bridge | 否 | 已发布 |
 | [opencode](https://github.com/sst/opencode) | 多模型 | ndjson | 是 | 已发布 |
 
 > Clowder 不替代你的 Agent CLI — 它是 CLI *之上*的那一层，让 agent 们作为团队协作。
+
+Clowder 里的 Kimi 支持基于官方 `kimi-cli`，并接入了项目/用户两层的 Kimi 表面：
+- MCP 配置：`.kimi/mcp.json`
+- skills 挂载：`.kimi/skills` 与 `~/.kimi/skills`
+- quota / 状态：读取 `~/.kimi` 下本地 `kimi-cli` 会话状态（上下文/缓存占用），不是 Moonshot 账单额度
 
 ## 快速开始
 

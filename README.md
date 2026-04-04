@@ -63,10 +63,16 @@ Clowder is model-agnostic. Each agent CLI plugs in via a unified output adapter:
 | [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | Claude (Opus / Sonnet / Haiku) | stream-json | Yes | Shipped |
 | [Codex CLI](https://github.com/openai/codex) | GPT / Codex | json | Yes | Shipped |
 | [Gemini CLI](https://github.com/google-gemini/gemini-cli) | Gemini | stream-json | Yes | Shipped |
+| [Kimi CLI](https://github.com/MoonshotAI/kimi-cli) | Kimi / Moonshot | stream-json | Yes | Shipped |
 | [Antigravity](https://github.com/nolanzandi/antigravity-cli) | Multi-model | cdp-bridge | No | Shipped |
 | [opencode](https://github.com/sst/opencode) | Multi-model | ndjson | Yes | Shipped |
 
 > Clowder doesn't replace your agent CLI — it's the layer *above* it that makes agents work as a team.
+
+Kimi support in Clowder uses the official `kimi-cli` and integrates with project/user-level Kimi surfaces:
+- MCP config: `.kimi/mcp.json`
+- skills mounts: `.kimi/skills` and `~/.kimi/skills`
+- quota/status: local `kimi-cli` session state under `~/.kimi` (context/cache usage), not Moonshot billing data
 
 ## Quick Start
 
