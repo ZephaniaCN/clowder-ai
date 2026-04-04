@@ -696,6 +696,8 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
     const isExplicitBindingCompatibilityError = (err: unknown): err is Error =>
       err instanceof Error &&
       (/bound provider profile/i.test(err.message) || /model ".+" is not available on provider/i.test(err.message));
+    const isBoundAccountResolutionError = (err: unknown): err is Error =>
+      err instanceof Error && /bound account ".+" not found/i.test(err.message);
 
     // Resolve account first, then use its protocol for env injection.
     // For API Key accounts, protocol is declared on the account itself.
@@ -704,7 +706,7 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
     try {
       resolvedAccount = assertCompatibleRuntimeAccount(await resolveRuntimeAccount());
     } catch (err) {
-      if (isExplicitBindingCompatibilityError(err)) {
+      if (isExplicitBindingCompatibilityError(err) || isBoundAccountResolutionError(err)) {
         throw err;
       }
       if (boundAccountRef) {
