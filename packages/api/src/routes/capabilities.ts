@@ -648,6 +648,7 @@ export const capabilitiesRoutes: FastifyPluginAsync = async (app) => {
     const skillDirCandidates: { name: string; dir: string }[] = [];
     for (const name of allSkillNames) {
       skillDirCandidates.push({ name, dir: join(projectSkillsDir, name) });
+      skillDirCandidates.push({ name, dir: join(projectRoot, '.kimi', 'skills', name) });
       skillDirCandidates.push({ name, dir: join(home, '.claude', 'skills', name) });
       skillDirCandidates.push({ name, dir: join(home, '.codex', 'skills', name) });
       skillDirCandidates.push({ name, dir: join(home, '.gemini', 'skills', name) });

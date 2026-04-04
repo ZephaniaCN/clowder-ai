@@ -684,6 +684,48 @@ describe('GET /api/capabilities (Fastify)', () => {
     await app.close();
   });
 
+  it('reads metadata from project .kimi skills directories', async () => {
+    const Fastify = (await import('fastify')).default;
+    const { capabilitiesRoutes } = await import('../dist/routes/capabilities.js');
+
+    const app = Fastify();
+    await app.register(capabilitiesRoutes);
+    await app.ready();
+
+    const projectDir = join('/tmp', `cap-route-test-kimi-meta-${Date.now()}`);
+    const skillDir = join(projectDir, '.kimi', 'skills', 'kimi-local-only');
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(
+      join(skillDir, 'SKILL.md'),
+      `---
+description: Project-local Kimi skill description
+triggers:
+  - kimi-local
+---
+
+# kimi-local-only
+`,
+      'utf8',
+    );
+
+    try {
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/capabilities?projectPath=${encodeURIComponent(projectDir)}`,
+        headers: AUTH_HEADERS,
+      });
+      assert.equal(res.statusCode, 200);
+      const body = res.json();
+      const skill = body.items.find((item) => item.type === 'skill' && item.id === 'kimi-local-only');
+      assert.ok(skill, 'should discover kimi-local-only skill');
+      assert.equal(skill.description, 'Project-local Kimi skill description');
+      assert.deepEqual(skill.triggers, ['kimi-local']);
+    } finally {
+      await rm(projectDir, { recursive: true, force: true });
+      await app.close();
+    }
+  });
+
   it('returns 400 for invalid projectPath', async () => {
     const Fastify = (await import('fastify')).default;
     const { capabilitiesRoutes } = await import('../dist/routes/capabilities.js');

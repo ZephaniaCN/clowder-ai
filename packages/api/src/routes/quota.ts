@@ -342,7 +342,6 @@ function normalizeKimiWorkDirPath(pathValue: string): string {
     return normalize(resolved);
   }
 }
-
 function resolvePreferredKimiSessionWireFile(
   shareDir: string,
   workingDirectory: string = process.cwd(),
@@ -400,7 +399,7 @@ function findNewestKimiWireFile(shareDir: string): string | null {
   }
 }
 
-function readLatestKimiWireStatus(wirePath: string): KimiWireStatusSnapshot | null {
+export function readLatestKimiWireStatus(wirePath: string): KimiWireStatusSnapshot | null {
   const CHUNK_SIZE = 64 * 1024;
   const parseStatusLine = (line: string): KimiWireStatusSnapshot | null => {
     let parsed: {
@@ -444,8 +443,9 @@ function readLatestKimiWireStatus(wirePath: string): KimiWireStatusSnapshot | nu
         const readSize = Math.min(CHUNK_SIZE, position);
         position -= readSize;
         const buffer = Buffer.allocUnsafe(readSize);
-        readSync(fd, buffer, 0, readSize, position);
-        const chunk = buffer.toString('utf8') + remainder;
+        const bytesRead = readSync(fd, buffer, 0, readSize, position);
+        if (bytesRead <= 0) continue;
+        const chunk = buffer.subarray(0, bytesRead).toString('utf8') + remainder;
         const lines = chunk.split('\n');
         remainder = lines.shift() ?? '';
 

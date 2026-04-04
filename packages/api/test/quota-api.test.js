@@ -23,6 +23,26 @@ async function buildApp() {
 }
 
 describe('GET /api/quota', () => {
+  it('reads only initialized bytes when scanning kimi wire chunks', async () => {
+    const { readLatestKimiWireStatus } = await import('../dist/routes/quota.js');
+    const shareDir = join(tmpdir(), `kimi-wire-partial-${Date.now()}`);
+    const wireDir = join(shareDir, 'sessions', 'session-a', 'run-a');
+    mkdirSync(wireDir, { recursive: true });
+    const wirePath = join(wireDir, 'wire.jsonl');
+    writeFileSync(
+      wirePath,
+      `${JSON.stringify({ message: { type: 'StatusUpdate', payload: { context_usage: 0.41, message_id: 'partial-read-msg' } } })}\n`,
+      'utf8',
+    );
+    try {
+      const snapshot = readLatestKimiWireStatus(wirePath);
+      assert.equal(snapshot?.contextUsage, 0.41);
+      assert.equal(snapshot?.messageId, 'partial-read-msg');
+    } finally {
+      rmSync(shareDir, { recursive: true, force: true });
+    }
+  });
+
   it('returns quota structure for all three platforms', async () => {
     const app = await buildApp();
     try {
