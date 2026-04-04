@@ -77,6 +77,15 @@ export function _resetOpenCodeKnownModels(override?: Set<string> | null): void {
   _openCodeKnownModels = override ?? null;
 }
 
+function resolveRuntimeConfigRoots(start = process.cwd()): { primary: string; fallback?: string } {
+  const primary = findMonorepoRoot(start);
+  const active = resolveActiveProjectRoot(start);
+  if (!isSameProject(primary, active)) {
+    return { primary, fallback: active };
+  }
+  return { primary };
+}
+
 import type { SessionManager } from '../../session/SessionManager.js';
 import type { ISessionSealer } from '../../session/SessionSealer.js';
 import type { TranscriptSessionInfo, TranscriptWriter } from '../../session/TranscriptWriter.js';
@@ -671,17 +680,30 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
     // from the runtime root at startup — reading a divergent catalog (e.g. the
     // dev worktree pointed to by thread.projectPath) misses runtime-only accounts.
     // workingProjectRoot is still used for shared-state preflight + cat cwd.
-    const projectRoot = resolveActiveProjectRoot(process.cwd());
+    const runtimeRoots = resolveRuntimeConfigRoots(process.cwd());
+    const projectRoot = runtimeRoots.primary;
+    const fallbackProjectRoot = runtimeRoots.fallback;
     const boundAccountRef = resolveBoundAccountRefForCat(projectRoot, catId, catConfig);
+    const fallbackBoundAccountRef = fallbackProjectRoot
+      ? resolveBoundAccountRefForCat(fallbackProjectRoot, catId, catConfig)
+      : undefined;
     const resolveRuntimeAccount = async () => {
       if (!builtinClient) return null;
       // Yield to event loop so preflight warnings are delivered before account resolution.
       await Promise.resolve();
       const runtime = resolveForClient(projectRoot, builtinClient, boundAccountRef);
-      if (boundAccountRef && !runtime) {
+      if (runtime) return runtime;
+      if (boundAccountRef && !fallbackProjectRoot) {
         throw new Error(`bound account "${boundAccountRef}" not found`);
       }
-      return runtime;
+      if (fallbackProjectRoot) {
+        const fallbackRuntime = resolveForClient(fallbackProjectRoot, builtinClient, fallbackBoundAccountRef);
+        if (fallbackRuntime) return fallbackRuntime;
+        if (boundAccountRef || fallbackBoundAccountRef) {
+          throw new Error(`bound account "${boundAccountRef ?? fallbackBoundAccountRef}" not found`);
+        }
+      }
+      return null;
     };
     const assertCompatibleRuntimeAccount = <T extends { id: string }>(
       account: (T & Parameters<typeof validateRuntimeProviderBinding>[1]) | null,

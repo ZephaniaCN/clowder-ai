@@ -196,7 +196,9 @@ describe('GET /api/quota', () => {
     writeFileSync(
       join(activeRun, 'wire.jsonl'),
       [
-        JSON.stringify({ message: { type: 'StatusUpdate', payload: { context_usage: 0.44, message_id: 'stable-msg' } } }),
+        JSON.stringify({
+          message: { type: 'StatusUpdate', payload: { context_usage: 0.44, message_id: 'stable-msg' } },
+        }),
         '{"message":{"type":"StatusUpdate","payload":',
         '',
       ].join('\n'),
