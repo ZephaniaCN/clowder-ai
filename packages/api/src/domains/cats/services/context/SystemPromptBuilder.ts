@@ -375,9 +375,9 @@ export function buildStaticIdentity(catId: CatId, options?: StaticIdentityOption
     if (hasDuplicateDisplayNames) {
       const example = uniqueHandleExample ?? '@opus';
       lines.push(`同族多分身时：默认 \`@显示名\`，其它用**唯一句柄**（例如 \`${example}\`）。`);
-      lines.push(`同名队友并存时，请优先使用唯一句柄（例如 \`${example}\`）避免歧义。`);
+      lines.push(`优先用唯一句柄（如 \`${example}\`）避免歧义。`);
     }
-    lines.push('格式：另起一行行首写 @猫名（行中无效，多猫各占一行），上文或下文写请求均可。');
+    lines.push('格式：另起一行行首写 @猫名（行中无效，多猫分行）。');
     lines.push(`[正确] ${exampleTarget}\\n请帮忙  [正确] 内容...\\n${exampleTarget}  [错误] 行中 ${exampleTarget}`);
     lines.push('');
   }
@@ -495,7 +495,7 @@ export function buildInvocationContext(context: InvocationContext): string {
   // without considering whether a teammate needs to act next.
   if (context.mode !== 'parallel' && context.a2aEnabled) {
     lines.push(
-      'A2A 出口检查：回复前问"到我这里结束了吗？"不是 → 谁需要动 → 末尾另起一行行首写 @句柄（句中 @ 无效）。',
+      'A2A 出口检查：回复前问"到我这里结束了吗？"未结束 → 想清谁需要动 → 末尾另起一行行首写 @句柄（句中 @ 无效）。',
       '',
     );
   }
@@ -584,10 +584,7 @@ export function buildInvocationContext(context: InvocationContext): string {
       '',
     );
   } else {
-    lines.push(
-      'Voice Mode OFF: 不强制发语音。默认用文字回复。你仍然可以发 audio rich block，但仅在铲屎官明确要求语音时才发。',
-      '',
-    );
+    lines.push('Voice Mode OFF: 默认文字，不强制语音；仅在铲屎官明确要求时发 audio rich block。', '');
   }
 
   // F087: Bootcamp mode — inject phase context so cats know to guide the new CVO
