@@ -6,6 +6,7 @@
 
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
+import { resolve } from 'node:path';
 import Fastify from 'fastify';
 
 describe('Thread API', () => {
@@ -38,6 +39,18 @@ describe('Thread API', () => {
     assert.equal(body.title, 'My Chat');
     assert.equal(body.createdBy, 'alice');
     assert.deepEqual(body.participants, []);
+  });
+
+  it('POST /api/threads defaults projectPath to monorepo root when omitted', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/threads',
+      payload: { userId: 'alice', title: 'Root Chat' },
+    });
+    assert.equal(res.statusCode, 201);
+    const body = JSON.parse(res.body);
+    assert.equal(body.projectPath, resolve(process.cwd()));
+    assert.notEqual(body.projectPath, 'default');
   });
 
   it('POST /api/threads with pinned=true creates a pinned thread', async () => {

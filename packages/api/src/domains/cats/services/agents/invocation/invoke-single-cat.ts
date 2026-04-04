@@ -524,7 +524,15 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
     if (threadStore) {
       try {
         const thread = await preflightRace(Promise.resolve(threadStore.get(threadId)), 'threadStore.get', signal);
-        if (thread?.projectPath && thread.projectPath !== 'default') {
+        if (thread?.projectPath === 'default' && typeof threadStore.updateProjectPath === 'function') {
+          const healedProjectPath = hostProjectRoot;
+          await preflightRace(
+            Promise.resolve(threadStore.updateProjectPath(threadId, healedProjectPath)),
+            'threadStore.updateProjectPath',
+            signal,
+          );
+          workingDirectory = healedProjectPath;
+        } else if (thread?.projectPath && thread.projectPath !== 'default') {
           // F101: Game threads use virtual projectPaths (e.g. 'games/werewolf') for
           // categorization only — they are not real filesystem directories. Skip them
           // to avoid triggering the F070 governance gate on a non-existent path.
