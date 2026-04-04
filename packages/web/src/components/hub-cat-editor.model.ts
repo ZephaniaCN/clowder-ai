@@ -1,5 +1,6 @@
 import type { CatData } from '@/hooks/useCatData';
 import type { BuiltinAccountClient, ProfileItem } from './hub-provider-profiles.types';
+import { inferBuiltinClientFromProfile } from './hub-provider-client-inference';
 import type { CatStrategyEntry, StrategyType } from './hub-strategy-types';
 
 export type ClientValue = 'anthropic' | 'openai' | 'google' | 'kimi' | 'dare' | 'opencode' | 'antigravity';
@@ -187,27 +188,7 @@ function isBuiltinClient(client: ClientValue): client is BuiltinAccountClient {
 }
 
 function legacyProfileClient(profile: ProfileItem): BuiltinAccountClient | undefined {
-  if (profile.client) return profile.client;
-  if (profile.oauthLikeClient === 'dare' || profile.oauthLikeClient === 'opencode') return profile.oauthLikeClient;
-  const normalizedId = `${profile.id} ${profile.provider ?? ''} ${profile.displayName} ${profile.name}`.toLowerCase();
-  if (normalizedId.includes('claude')) return 'anthropic';
-  if (normalizedId.includes('codex')) return 'openai';
-  if (normalizedId.includes('gemini')) return 'google';
-  if (normalizedId.includes('kimi') || normalizedId.includes('moonshot')) return 'kimi';
-  if (normalizedId.includes('dare')) return 'dare';
-  if (normalizedId.includes('opencode')) return 'opencode';
-  switch (profile.protocol) {
-    case 'anthropic':
-      return 'anthropic';
-    case 'openai':
-      return 'openai';
-    case 'google':
-      return 'google';
-    case 'kimi':
-      return 'kimi';
-    default:
-      return undefined;
-  }
+  return inferBuiltinClientFromProfile(profile);
 }
 
 export function builtinAccountIdForClient(client: ClientValue): string | null {

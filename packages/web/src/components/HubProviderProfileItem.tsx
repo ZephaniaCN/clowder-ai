@@ -34,9 +34,6 @@ function protocolLabel(protocol: string | undefined): string {
   return PROTOCOL_OPTIONS.find((o) => o.value === protocol)?.label ?? protocol ?? '自动';
 }
 
-function isKimiConfigProfile(profile: ProfileItem): boolean {
-  return !profile.builtin && profile.protocol === 'kimi';
-}
 
 function summaryText(profile: ProfileItem): string | null {
   if (profile.builtin) return null;

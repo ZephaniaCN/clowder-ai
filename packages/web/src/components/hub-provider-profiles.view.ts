@@ -1,4 +1,5 @@
 import type { BuiltinAccountClient, ProfileItem } from './hub-provider-profiles.types';
+import { inferBuiltinClientFromProfile } from './hub-provider-client-inference';
 
 const FALLBACK_BUILTIN_PROFILE_SPECS: Array<{
   client: BuiltinAccountClient;
@@ -14,30 +15,17 @@ const FALLBACK_BUILTIN_PROFILE_SPECS: Array<{
   { client: 'opencode', id: 'opencode', displayName: 'OpenCode (client-auth)', models: [] },
 ];
 
-function inferBuiltinClient(profile: ProfileItem): BuiltinAccountClient | undefined {
-  if (profile.client) return profile.client;
-  if (profile.oauthLikeClient === 'dare' || profile.oauthLikeClient === 'opencode') return profile.oauthLikeClient;
-  const normalizedId = `${profile.id} ${profile.provider ?? ''} ${profile.displayName} ${profile.name}`.toLowerCase();
-  if (normalizedId.includes('claude')) return 'anthropic';
-  if (normalizedId.includes('codex')) return 'openai';
-  if (normalizedId.includes('gemini')) return 'google';
-  if (normalizedId.includes('kimi') || normalizedId.includes('moonshot')) return 'kimi';
-  if (normalizedId.includes('dare')) return 'dare';
-  if (normalizedId.includes('opencode')) return 'opencode';
-  return undefined;
-}
-
 export function ensureBuiltinProviderProfiles(profiles: ProfileItem[]): ProfileItem[] {
   const normalized = profiles.map((profile) => {
     if (!profile.builtin) return profile;
-    const client = inferBuiltinClient(profile);
+    const client = inferBuiltinClientFromProfile(profile);
     return client ? { ...profile, client } : profile;
   });
 
   const seenBuiltinClients = new Set(
     normalized
       .filter((profile) => profile.builtin)
-      .map((profile) => inferBuiltinClient(profile))
+      .map((profile) => inferBuiltinClientFromProfile(profile))
       .filter(Boolean) as BuiltinAccountClient[],
   );
 
