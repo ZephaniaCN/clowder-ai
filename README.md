@@ -69,11 +69,6 @@ Clowder is model-agnostic. Each agent CLI plugs in via a unified output adapter:
 
 > Clowder doesn't replace your agent CLI — it's the layer *above* it that makes agents work as a team.
 
-Kimi support in Clowder uses the official `kimi-cli` and integrates with project/user-level Kimi surfaces:
-- MCP config: `.kimi/mcp.json`
-- skills mounts: `.kimi/skills` and `~/.kimi/skills`
-- quota/status: local `kimi-cli` session state under `~/.kimi` (context/cache usage), not Moonshot billing data
-
 ## Quick Start
 
 **Prerequisites:** [Node.js 20+](https://nodejs.org/) · [pnpm 9+](https://pnpm.io/) · [Redis 7+](https://redis.io/) *(optional — use `--memory` to skip)* · Git

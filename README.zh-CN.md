@@ -64,11 +64,6 @@ Clowder 不绑定模型。当前支持的 Agent CLI：
 
 > Clowder 不替代你的 Agent CLI — 它是 CLI *之上*的那一层，让 agent 们作为团队协作。
 
-Clowder 里的 Kimi 支持基于官方 `kimi-cli`，并接入了项目/用户两层的 Kimi 表面：
-- MCP 配置：`.kimi/mcp.json`
-- skills 挂载：`.kimi/skills` 与 `~/.kimi/skills`
-- quota / 状态：读取 `~/.kimi` 下本地 `kimi-cli` 会话状态（上下文/缓存占用），不是 Moonshot 账单额度
-
 ## 快速开始
 
 **前置要求：** [Node.js 20+](https://nodejs.org/) · [pnpm 9+](https://pnpm.io/) · [Redis 7+](https://redis.io/) *（可选 — 用 `--memory` 跳过）* · Git
