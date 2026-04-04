@@ -160,6 +160,7 @@ import {
   signalsRoutes,
   skillsRoutes,
   sliceRoutes,
+  standupRoutes,
   summariesRoutes,
   tasksRoutes,
   threadBranchRoutes,
@@ -959,6 +960,8 @@ async function main(): Promise<void> {
   if (toolUsageCounter) {
     await app.register(toolUsageRoutes, { toolUsageCounter });
   }
+  // Q12: Daily standup summary
+  await app.register(standupRoutes, { invocationRecordStore });
   // F075 Phase B+C: Game + Achievement stores
   const { GameStore } = await import('./domains/leaderboard/game-store.js');
   const { AchievementStore } = await import('./domains/leaderboard/achievement-store.js');
