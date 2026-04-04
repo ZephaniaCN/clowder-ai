@@ -7,7 +7,6 @@ import type { IBacklogStore } from '../domains/cats/services/stores/ports/Backlo
 import { BacklogTransitionError } from '../domains/cats/services/stores/ports/BacklogStore.js';
 import { generateSortableId, type IMessageStore } from '../domains/cats/services/stores/ports/MessageStore.js';
 import type { IThreadStore } from '../domains/cats/services/stores/ports/ThreadStore.js';
-import { findMonorepoRoot } from '../utils/monorepo-root.js';
 import { resolveUserId } from '../utils/request-identity.js';
 import {
   type BacklogFeatureRow,
@@ -177,7 +176,6 @@ function isActiveLeaseOwner(item: BacklogItem, catId: CatId, now: number): boole
 export const backlogRoutes: FastifyPluginAsync<BacklogRoutesOptions> = async (app, opts) => {
   const { backlogStore, threadStore, messageStore, backlogDocPath } = opts;
   const resolveSelfClaimScope = opts.resolveSelfClaimScope ?? ((catId: CatId) => getMissionHubSelfClaimScope(catId));
-  const defaultProjectPath = findMonorepoRoot(process.cwd());
 
   async function dispatchApprovedItem(item: BacklogItem, userId: string, phase: ThreadPhase) {
     // Acquire in-flight dispatch lock to prevent concurrent races (Redis only, 30s TTL)
@@ -232,7 +230,7 @@ export const backlogRoutes: FastifyPluginAsync<BacklogRoutesOptions> = async (ap
       }
     }
     if (!threadId) {
-      const thread = await threadStore.create(userId, `[Backlog] ${item.title}`, defaultProjectPath);
+      const thread = await threadStore.create(userId, `[Backlog] ${item.title}`, 'default');
       threadId = thread.id;
       const updated = await backlogStore.updateDispatchProgress(item.id, {
         updatedBy: userId,

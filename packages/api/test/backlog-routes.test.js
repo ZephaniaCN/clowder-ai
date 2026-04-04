@@ -2,7 +2,7 @@ import './helpers/setup-cat-registry.js';
 import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { beforeEach, describe, test } from 'node:test';
 import Fastify from 'fastify';
 
@@ -106,8 +106,6 @@ describe('Backlog Routes', () => {
     assert.ok(thread);
     assert.equal(thread?.phase, 'coding');
     assert.equal(thread?.backlogItemId, itemId);
-    assert.equal(thread?.projectPath, resolve(process.cwd()));
-    assert.notEqual(thread?.projectPath, 'default');
 
     const kickoffMessages = await messageStore.getByThread(approved.thread.id, 10, 'default-user');
     assert.equal(kickoffMessages.length, 1);

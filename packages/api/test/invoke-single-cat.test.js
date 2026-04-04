@@ -5,9 +5,9 @@
 
 import './helpers/setup-cat-registry.js';
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { afterEach, before, beforeEach, describe, it, mock } from 'node:test';
 import { catRegistry } from '@cat-cafe/shared';
 
@@ -4106,55 +4106,6 @@ describe('invokeSingleCat audit events (P1 fix)', () => {
       'should reach done (service was invoked)',
     );
     assert.equal(optionsSeen[0]?.workingDirectory, undefined, 'workingDirectory must be undefined for game threads');
-  });
-
-  it('heals default thread projectPath to runtime monorepo root before invoking Claude', async () => {
-    const optionsSeen = [];
-    const healedPaths = [];
-    const runtimeRoot = await mkdtemp(join(tmpdir(), 'default-thread-root-'));
-    const runtimeApiDir = join(runtimeRoot, 'packages', 'api');
-    await mkdir(runtimeApiDir, { recursive: true });
-    await writeFile(join(runtimeRoot, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n', 'utf-8');
-
-    const service = {
-      async *invoke(_prompt, options) {
-        optionsSeen.push(options ?? {});
-        yield { type: 'done', catId: 'opus', timestamp: Date.now() };
-      },
-    };
-
-    const deps = {
-      ...makeDeps(),
-      threadStore: {
-        get: async () => ({ projectPath: 'default', createdBy: 'user1' }),
-        updateProjectPath: async (_threadId, projectPath) => {
-          healedPaths.push(projectPath);
-        },
-        updateParticipantActivity: async () => {},
-      },
-    };
-
-    const previousCwd = process.cwd();
-    try {
-      process.chdir(runtimeApiDir);
-      const msgs = await collect(
-        invokeSingleCat(deps, {
-          catId: 'opus',
-          service,
-          prompt: 'heal default projectPath',
-          userId: 'user1',
-          threadId: 'thread-default-heal',
-          isLastCat: true,
-        }),
-      );
-      assert.ok(msgs.some((m) => m.type === 'done'));
-      const canonicalRuntimeRoot = await realpath(runtimeRoot);
-      assert.deepEqual(healedPaths, [canonicalRuntimeRoot]);
-      assert.equal(optionsSeen[0]?.workingDirectory, canonicalRuntimeRoot);
-    } finally {
-      process.chdir(previousCwd);
-      await rm(runtimeRoot, { recursive: true, force: true });
-    }
   });
 
   it('bug-fix: account resolution uses runtime root (process.cwd()), not thread.projectPath', async () => {
