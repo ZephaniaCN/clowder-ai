@@ -222,6 +222,44 @@ interface SkillMeta {
   triggers?: string[];
 }
 
+interface SkillScanPlan {
+  key: string;
+  provider: 'anthropic' | 'openai' | 'google' | 'kimi';
+  path: string;
+  exclude?: string[];
+}
+
+export async function scanProviderSkillDirs(plans: SkillScanPlan[]): Promise<{
+  providerSkills: Record<string, string[]>;
+  scanResults: Record<string, string[] | null>;
+  scansOk: boolean;
+}> {
+  const providerSkills: Record<string, string[]> = {};
+  const scanResults: Record<string, string[] | null> = {};
+
+  for (const plan of plans) {
+    if (!providerSkills[plan.provider]) providerSkills[plan.provider] = [];
+  }
+
+  const results = await Promise.all(
+    plans.map(async (plan) => {
+      const names = await listSkillSubdirs(plan.path, plan.exclude);
+      return { plan, names };
+    }),
+  );
+
+  let scansOk = true;
+  for (const { plan, names } of results) {
+    scanResults[plan.key] = names;
+    if (names === null) {
+      scansOk = false;
+      continue;
+    }
+    providerSkills[plan.provider] = [...new Set([...(providerSkills[plan.provider] ?? []), ...names])];
+  }
+
+  return { providerSkills, scanResults, scansOk };
+}
 /**
  * Extract description + triggers from a SKILL.md frontmatter.
  * Triggers are embedded in descriptions:
@@ -483,16 +521,17 @@ export const capabilitiesRoutes: FastifyPluginAsync = async (app) => {
     // Use listSkillSubdirs() for provider dirs so stale/broken symlinks do not
     // resurrect deleted skills in the board.
     const projectSkillsDir = join(projectRoot, '.claude', 'skills');
-    const projectKimiSkillsDir = join(projectRoot, '.kimi', 'skills');
-    const [claudeProjectSkills, claudeUserSkills, codexSkills, geminiSkills, projectKimiSkills, userKimiSkills] =
-      await Promise.all([
-      listSkillSubdirs(projectSkillsDir),
-      listSkillSubdirs(join(home, '.claude', 'skills')),
-      listSkillSubdirs(join(home, '.codex', 'skills'), ['.system']),
-      listSkillSubdirs(join(home, '.gemini', 'skills')),
-      listSkillSubdirs(projectKimiSkillsDir),
-      listSkillSubdirs(join(home, '.kimi', 'skills')),
-    ]);
+    const skillScanPlans: SkillScanPlan[] = [
+      { key: 'claude-project', provider: 'anthropic', path: projectSkillsDir },
+      { key: 'claude-user', provider: 'anthropic', path: join(home, '.claude', 'skills') },
+      { key: 'codex-user', provider: 'openai', path: join(home, '.codex', 'skills'), exclude: ['.system'] },
+      { key: 'gemini-user', provider: 'google', path: join(home, '.gemini', 'skills') },
+      { key: 'kimi-project', provider: 'kimi', path: join(projectRoot, '.kimi', 'skills') },
+      { key: 'kimi-user', provider: 'kimi', path: join(home, '.kimi', 'skills') },
+    ];
+    const { providerSkills, scanResults, scansOk: allScansOk } = await scanProviderSkillDirs(skillScanPlans);
+    const claudeProjectSkills = scanResults['claude-project'];
+    const projectKimiSkills = scanResults['kimi-project'];
 
     // F041 bug fix: Also scan cat-cafe-skills/ for project-level skill detection.
     // User-level skills (e.g. ~/.claude/skills/feat-completion) are symlinks to
@@ -502,28 +541,11 @@ export const capabilitiesRoutes: FastifyPluginAsync = async (app) => {
     const catCafeOwnSkills = await listSkillSubdirs(catCafeSkillsDir);
     const hasProjectCatCafeSkillsDir = existsSync(catCafeSkillsDir);
 
-    const allScansOk =
-      claudeProjectSkills !== null &&
-      claudeUserSkills !== null &&
-      codexSkills !== null &&
-      geminiSkills !== null &&
-      projectKimiSkills !== null &&
-      userKimiSkills !== null;
-
-    // F041 re-open: Track project-level skills for source classification
-    // Includes both .claude/skills/ AND cat-cafe-skills/ entries
     const projectSkillNames = new Set([
       ...(claudeProjectSkills ?? []),
       ...(projectKimiSkills ?? []),
       ...(catCafeOwnSkills ?? []),
     ]);
-
-    const providerSkills: Record<string, string[]> = {
-      anthropic: [...new Set([...(claudeProjectSkills ?? []), ...(claudeUserSkills ?? [])])],
-      openai: codexSkills ?? [],
-      google: geminiSkills ?? [],
-      kimi: [...new Set([...(projectKimiSkills ?? []), ...(userKimiSkills ?? [])])],
-    };
 
     // 3. Sync discovered skills into capabilities.json
     const allSkillNames = new Set<string>();
@@ -564,7 +586,8 @@ export const capabilitiesRoutes: FastifyPluginAsync = async (app) => {
         !shouldBeCatCafe &&
         cap.source === 'cat-cafe' &&
         catCafeOwnSkills !== null &&
-        claudeProjectSkills !== null
+        claudeProjectSkills !== null &&
+        projectKimiSkills !== null
       ) {
         cap.source = 'external';
         configDirty = true;
