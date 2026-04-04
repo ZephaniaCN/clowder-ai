@@ -178,7 +178,7 @@ test('maps bare oauth kimi model names to configured model alias', async () => {
   }
 });
 
-test('api-key mode passes config file path instead of embedding secrets in argv', async () => {
+test('api-key mode injects kimi env overrides instead of embedding secrets in argv', async () => {
   const proc = createMockProcess();
   const spawnFn = createMockSpawnFn(proc);
   const service = new KimiAgentService({ spawnFn, model: 'kimi-code/kimi-for-coding' });
@@ -197,12 +197,16 @@ test('api-key mode passes config file path instead of embedding secrets in argv'
 
   const args = spawnFn.mock.calls[0].arguments[1];
   const joined = args.join(' ');
-  assert.ok(args.includes('--config-file'));
+  const env = spawnFn.mock.calls[0].arguments[2]?.env ?? {};
+  assert.ok(!args.includes('--config-file'));
+  assert.ok(!args.includes('--model'));
   assert.ok(!joined.includes('sk-kimi-secret'));
-  assert.ok(!joined.includes('"api_key"'));
+  assert.equal(env.KIMI_API_KEY, 'sk-kimi-secret');
+  assert.equal(env.KIMI_BASE_URL, 'https://api.moonshot.ai/v1');
+  assert.equal(env.KIMI_MODEL_NAME, 'kimi-code/kimi-for-coding');
 });
 
-test('api-key mode writes a config whose default model matches the CLI --model value', async () => {
+test('api-key mode maps selected model into official kimi env overrides', async () => {
   const shareDir = mkdtempSync(join(tmpdir(), 'kimi-share-config-shape-'));
   const proc = createMockProcess();
   const spawnFn = createMockSpawnFn(proc);
@@ -219,17 +223,10 @@ test('api-key mode writes a config whose default model matches the CLI --model v
       }),
     );
     const args = spawnFn.mock.calls[0].arguments[1];
-    const modelFlagIndex = args.indexOf('--model');
-    const configFlagIndex = args.indexOf('--config-file');
-    assert.ok(modelFlagIndex >= 0);
-    assert.ok(configFlagIndex >= 0);
-
-    const cliModel = args[modelFlagIndex + 1];
-    const configPath = args[configFlagIndex + 1];
-    const config = JSON.parse(readFileSync(configPath, 'utf8'));
-    assert.equal(config.default_model, cliModel);
-    assert.ok(config.models[cliModel]);
-    assert.equal(config.models[cliModel].model, cliModel);
+    const env = spawnFn.mock.calls[0].arguments[2]?.env ?? {};
+    assert.ok(!args.includes('--model'));
+    assert.equal(env.KIMI_MODEL_NAME, 'kimi-k2.5');
+    assert.equal(env.KIMI_MODEL_MAX_CONTEXT_SIZE, '262144');
 
     emitKimiEvents(proc, [{ role: 'assistant', content: 'ok' }]);
     await promise;

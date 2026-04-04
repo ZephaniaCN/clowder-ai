@@ -128,40 +128,17 @@ function buildProjectMcpArgs(workingDirectory?: string): string[] {
   return existsSync(mcpConfigPath) ? ['--mcp-config-file', mcpConfigPath] : [];
 }
 
-function buildInlineApiKeyConfig(model: string, callbackEnv?: Record<string, string>): string | null {
+function buildApiKeyEnv(model: string, callbackEnv?: Record<string, string>): Record<string, string> | null {
   const apiKey = callbackEnv?.CAT_CAFE_KIMI_API_KEY;
   if (!apiKey) return null;
   const baseUrl = callbackEnv?.CAT_CAFE_KIMI_BASE_URL || DEFAULT_KIMI_BASE_URL;
   const configuredModelName = model.trim();
-  return JSON.stringify({
-    providers: {
-      'cat-cafe-kimi': {
-        type: 'kimi',
-        base_url: baseUrl,
-        api_key: apiKey,
-      },
-    },
-    models: {
-      [configuredModelName]: {
-        provider: 'cat-cafe-kimi',
-        model: configuredModelName,
-        max_context_size: 262144,
-      },
-    },
-    default_model: configuredModelName,
-  });
-}
-
-function writeApiKeyConfigFile(
-  model: string,
-  callbackEnv?: Record<string, string>,
-): { configDir: string; configPath: string } | null {
-  const apiKeyConfig = buildInlineApiKeyConfig(model, callbackEnv);
-  if (!apiKeyConfig) return null;
-  const configDir = mkdtempSync(join(resolveKimiShareDir(callbackEnv), 'tmp-config-'));
-  const configPath = join(configDir, 'config.json');
-  writeFileSync(configPath, apiKeyConfig, { encoding: 'utf8', mode: 0o600 });
-  return { configDir, configPath };
+  return {
+    KIMI_API_KEY: apiKey,
+    KIMI_BASE_URL: baseUrl,
+    KIMI_MODEL_NAME: configuredModelName,
+    KIMI_MODEL_MAX_CONTEXT_SIZE: callbackEnv?.KIMI_MODEL_MAX_CONTEXT_SIZE || '262144',
+  };
 }
 
 export class KimiAgentService implements AgentService {
@@ -183,10 +160,10 @@ export class KimiAgentService implements AgentService {
     const metadata: MessageMetadata = { provider: 'kimi', model: effectiveModel };
     const effectivePrompt = options?.systemPrompt ? `${options.systemPrompt}\n\n${prompt}` : prompt;
     const workingDirectory = options?.workingDirectory ?? process.cwd();
-    const tempConfig = writeApiKeyConfigFile(effectiveModel, options?.callbackEnv);
+    const apiKeyEnv = buildApiKeyEnv(effectiveModel, options?.callbackEnv);
     const tempMcpConfig = this.writeMcpConfigFile(workingDirectory, options?.callbackEnv);
 
-    const args = ['--print', '--output-format', 'stream-json', '--model', effectiveModel];
+    const args = ['--print', '--output-format', 'stream-json'];
     if (options?.sessionId) {
       args.push('--session', options.sessionId);
       metadata.sessionId = options.sessionId;
@@ -204,8 +181,8 @@ export class KimiAgentService implements AgentService {
     } else {
       args.push(...buildProjectMcpArgs(workingDirectory));
     }
-    if (tempConfig) {
-      args.push('--config-file', tempConfig.configPath);
+    if (!apiKeyEnv) {
+      args.push('--model', effectiveModel);
     }
     args.push('--prompt', effectivePrompt);
 
@@ -228,7 +205,9 @@ export class KimiAgentService implements AgentService {
         command: kimiCommand,
         args,
         ...(options?.workingDirectory ? { cwd: options.workingDirectory } : {}),
-        ...(options?.callbackEnv ? { env: options.callbackEnv } : {}),
+        ...((options?.callbackEnv || apiKeyEnv)
+          ? { env: { ...(options?.callbackEnv ?? {}), ...(apiKeyEnv ?? {}) } }
+          : {}),
         ...(options?.signal ? { signal: options.signal } : {}),
         ...(options?.invocationId ? { invocationId: options.invocationId } : {}),
         ...(options?.cliSessionId ? { cliSessionId: options.cliSessionId } : {}),
@@ -355,13 +334,6 @@ export class KimiAgentService implements AgentService {
       };
       yield { type: 'done', catId: this.catId, metadata, timestamp: Date.now() };
     } finally {
-      if (tempConfig) {
-        try {
-          rmSync(tempConfig.configDir, { recursive: true, force: true });
-        } catch {
-          // best-effort cleanup
-        }
-      }
       if (tempMcpConfig) {
         try {
           rmSync(dirname(tempMcpConfig), { recursive: true, force: true });
