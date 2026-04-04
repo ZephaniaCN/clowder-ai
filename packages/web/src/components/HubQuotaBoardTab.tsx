@@ -149,18 +149,33 @@ export function HubQuotaBoardTab() {
     setRefreshing(true);
     setRefreshError(null);
     try {
-      const res = await apiFetch('/api/quota/refresh/official', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ interactive: true }),
-      });
-      if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as { error?: string };
-        setRefreshError(body.error ?? '获取官方额度失败');
+      const [officialRes, kimiRes] = await Promise.all([
+        apiFetch('/api/quota/refresh/official', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ interactive: true }),
+        }),
+        apiFetch('/api/quota/refresh/kimi', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ]);
+
+      const errors: string[] = [];
+      if (!officialRes.ok) {
+        const body = (await officialRes.json().catch(() => ({}))) as { error?: string };
+        errors.push(body.error ?? '获取官方额度失败');
+      }
+      if (!kimiRes.ok) {
+        const body = (await kimiRes.json().catch(() => ({}))) as { error?: string };
+        errors.push(body.error ?? '刷新 Kimi 本地会话状态失败');
+      }
+      if (errors.length > 0) {
+        setRefreshError(errors.join('；'));
       }
       await fetchQuota();
     } catch {
-      setRefreshError('获取官方额度失败，请稍后重试');
+      setRefreshError('刷新配额失败，请稍后重试');
     } finally {
       setRefreshing(false);
     }

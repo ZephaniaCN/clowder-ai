@@ -330,6 +330,79 @@ test('wraps system prompt separately and adds local image path hints', async () 
   }
 });
 
+test('enables thinking mode, parses think blocks, and grants image directories to kimi-cli', async () => {
+  const shareDir = mkdtempSync(join(tmpdir(), 'kimi-config-cap-'));
+  const uploadDir = mkdtempSync(join(tmpdir(), 'kimi-image-cap-'));
+  const imagePath = join(uploadDir, 'diagram.png');
+  writeFileSync(imagePath, 'fake-image', 'utf8');
+  const proc = createMockProcess();
+  const spawnFn = createMockSpawnFn(proc);
+  const service = new KimiAgentService({ spawnFn, model: 'kimi-code/kimi-for-coding' });
+
+  try {
+    writeFileSync(
+      join(shareDir, 'config.toml'),
+      [
+        'default_model = "kimi-code/kimi-for-coding"',
+        'default_thinking = true',
+        '',
+        '[models."kimi-code/kimi-for-coding"]',
+        'capabilities = ["thinking", "image_in"]',
+      ].join('\n'),
+      'utf8',
+    );
+
+    const promise = collect(
+      service.invoke('看看这张图', {
+        callbackEnv: { KIMI_SHARE_DIR: shareDir },
+        contentBlocks: [{ type: 'image', url: '/uploads/diagram.png' }],
+        uploadDir,
+      }),
+    );
+
+    emitKimiEvents(proc, [
+      {
+        role: 'assistant',
+        content: [
+          { type: 'think', think: '先理解图片里有什么。' },
+          { type: 'text', text: '我已经看到图片路径提示。' },
+        ],
+      },
+    ]);
+
+    const msgs = await promise;
+    assert.equal(msgs[0].type, 'system_info');
+    assert.match(msgs[0].content, /thinking/);
+    assert.match(msgs[0].content, /先理解图片/);
+    assert.equal(msgs[1].type, 'system_info');
+    assert.match(msgs[1].content, /image_input/);
+    assert.match(msgs[1].content, /available/);
+    assert.equal(msgs[2].type, 'text');
+    assert.match(msgs[2].content, /图片路径提示/);
+
+    const args = spawnFn.mock.calls[0].arguments[1];
+    assert.ok(args.includes('--thinking'));
+    const addDirIndex = args.indexOf('--add-dir');
+    assert.ok(addDirIndex >= 0);
+    assert.equal(args[addDirIndex + 1], uploadDir);
+  } finally {
+    rmSync(shareDir, { recursive: true, force: true });
+    rmSync(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('extracts session id from non-json resume hint lines in print mode', async () => {
+  async function* spawnCliOverride() {
+    yield { line: 'To resume this session: kimi -r ab5188ae-f3e8-4f72-baec-48a53c665e9a', error: 'Failed to parse JSON line' };
+    yield { role: 'assistant', content: 'done' };
+  }
+
+  const service = new KimiAgentService({ model: 'kimi-code/kimi-for-coding' });
+  const msgs = await collect(service.invoke('Hello', { spawnCliOverride }));
+  const session = msgs.find((msg) => msg.type === 'session_init');
+  assert.equal(session?.sessionId, 'ab5188ae-f3e8-4f72-baec-48a53c665e9a');
+});
+
 test('captures usage and session id from kimi stream events when available', async () => {
   const proc = createMockProcess();
   const spawnFn = createMockSpawnFn(proc);

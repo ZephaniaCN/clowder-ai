@@ -27,7 +27,7 @@ import { formatCliNotFoundError, resolveCliCommand } from '../../../../../utils/
 import { isCliError, isCliTimeout, isLivenessWarning, spawnCli } from '../../../../../utils/cli-spawn.js';
 import type { SpawnFn } from '../../../../../utils/cli-types.js';
 import type { AgentMessage, AgentService, AgentServiceOptions, MessageMetadata, TokenUsage } from '../../types.js';
-import { appendLocalImagePathHints } from './image-cli-bridge.js';
+import { appendLocalImagePathHints, collectImageAccessDirectories } from './image-cli-bridge.js';
 import { extractImagePaths } from './image-paths.js';
 import { resolveDefaultClaudeMcpServerPath } from './ClaudeAgentService.js';
 
@@ -61,6 +61,11 @@ interface KimiPrintMessage {
   sessionId?: unknown;
   usage?: unknown;
   stats?: unknown;
+}
+
+interface KimiModelConfigInfo {
+  readonly defaultThinking: boolean;
+  readonly capabilities: readonly string[];
 }
 
 function parseToolArguments(raw: unknown): Record<string, unknown> {
@@ -99,6 +104,21 @@ function extractThinkingContent(message: KimiPrintMessage): string | null {
   for (const candidate of candidates) {
     const text = extractTextContent(candidate);
     if (text) return text;
+  }
+  if (Array.isArray(message.content)) {
+    const thinkText = message.content
+      .map((item) => {
+        if (!item || typeof item !== 'object') return '';
+        const block = item as Record<string, unknown>;
+        if (typeof block.think === 'string') return block.think;
+        if (typeof block.reasoning === 'string') return block.reasoning;
+        if (block.type === 'thinking' && typeof block.text === 'string') return block.text;
+        return '';
+      })
+      .filter(Boolean)
+      .join('\n')
+      .trim();
+    if (thinkText) return thinkText;
   }
   return null;
 }
@@ -147,6 +167,44 @@ function resolveKimiConfigPath(callbackEnv?: Record<string, string>): string {
   const explicit = callbackEnv?.KIMI_CONFIG_FILE || process.env.KIMI_CONFIG_FILE;
   if (explicit) return resolve(explicit);
   return join(resolveKimiShareDir(callbackEnv), 'config.toml');
+}
+
+function readKimiModelConfigInfo(modelAlias: string, callbackEnv?: Record<string, string>): KimiModelConfigInfo {
+  const fallbackCapabilities: string[] = modelAlias === DEFAULT_KIMI_MODEL_ALIAS ? ['thinking', 'image_in', 'video_in'] : [];
+  const configPath = resolveKimiConfigPath(callbackEnv);
+  if (!existsSync(configPath)) {
+    return { defaultThinking: fallbackCapabilities.includes('thinking'), capabilities: [...fallbackCapabilities] };
+  }
+
+  try {
+    const raw = readFileSync(configPath, 'utf-8');
+    const defaultThinkingMatch = raw.match(/^\s*default_thinking\s*=\s*(true|false)\s*$/m);
+    const sectionHeader = `[models."${modelAlias}"]`;
+    const sectionStart = raw.indexOf(sectionHeader);
+    let capabilities: string[] = [...fallbackCapabilities];
+    if (sectionStart >= 0) {
+      const nextSection = raw.indexOf('\n[', sectionStart + sectionHeader.length);
+      const section = raw.slice(sectionStart, nextSection >= 0 ? nextSection : undefined);
+      const capsMatch = section.match(/^\s*capabilities\s*=\s*\[([^\]]*)\]/m);
+      if (capsMatch?.[1]) {
+        capabilities = Array.from(
+          new Set(
+            capsMatch[1]
+              .split(',')
+              .map((item) => item.trim().replace(/^["']|["']$/g, ''))
+              .filter(Boolean),
+          ),
+        );
+      }
+    }
+    return {
+      defaultThinking:
+        defaultThinkingMatch?.[1] === 'true' || capabilities.includes('thinking') || fallbackCapabilities.includes('thinking'),
+      capabilities,
+    };
+  } catch {
+    return { defaultThinking: fallbackCapabilities.includes('thinking'), capabilities: [...fallbackCapabilities] };
+  }
 }
 
 function resolveKimiModelAlias(model: string, callbackEnv?: Record<string, string>): string {
@@ -200,6 +258,7 @@ function buildApiKeyEnv(model: string, callbackEnv?: Record<string, string>): Re
     KIMI_BASE_URL: baseUrl,
     KIMI_MODEL_NAME: configuredModelName,
     KIMI_MODEL_MAX_CONTEXT_SIZE: callbackEnv?.KIMI_MODEL_MAX_CONTEXT_SIZE || '262144',
+    ...(callbackEnv?.KIMI_MODEL_CAPABILITIES ? { KIMI_MODEL_CAPABILITIES: callbackEnv.KIMI_MODEL_CAPABILITIES } : {}),
   };
 }
 
@@ -221,10 +280,16 @@ export class KimiAgentService implements AgentService {
     const effectiveModel = resolveKimiModelAlias(requestedModel, options?.callbackEnv);
     const metadata: MessageMetadata = { provider: 'kimi', model: effectiveModel };
     const imagePaths = extractImagePaths(options?.contentBlocks, options?.uploadDir);
+    const imageAccessDirs = collectImageAccessDirectories(imagePaths);
     const effectivePrompt = buildKimiPrompt(prompt, options?.systemPrompt, imagePaths);
     const workingDirectory = options?.workingDirectory ?? process.cwd();
     const apiKeyEnv = buildApiKeyEnv(effectiveModel, options?.callbackEnv);
     const tempMcpConfig = this.writeMcpConfigFile(workingDirectory, options?.callbackEnv);
+    const modelConfig = readKimiModelConfigInfo(effectiveModel, options?.callbackEnv);
+    const supportsThinking =
+      modelConfig.capabilities.includes('thinking') || apiKeyEnv?.KIMI_MODEL_CAPABILITIES?.includes('thinking') === true;
+    const supportsImageInput =
+      modelConfig.capabilities.includes('image_in') || apiKeyEnv?.KIMI_MODEL_CAPABILITIES?.includes('image_in') === true;
 
     const args = ['--print', '--output-format', 'stream-json'];
     if (options?.sessionId) {
@@ -239,10 +304,16 @@ export class KimiAgentService implements AgentService {
       };
     }
     args.push('--work-dir', workingDirectory);
+    if (supportsThinking || modelConfig.defaultThinking) {
+      args.push('--thinking');
+    }
     if (tempMcpConfig) {
       args.push('--mcp-config-file', tempMcpConfig);
     } else {
       args.push(...buildProjectMcpArgs(workingDirectory));
+    }
+    for (const dir of imageAccessDirs) {
+      args.push('--add-dir', dir);
     }
     if (!apiKeyEnv) {
       args.push('--model', effectiveModel);
@@ -265,6 +336,7 @@ export class KimiAgentService implements AgentService {
 
       let emittedSessionInit = Boolean(options?.sessionId);
       let emittedThinkingUnavailable = false;
+      let emittedImageCapability = false;
       const cliOpts = {
         command: kimiCommand,
         args,
@@ -338,6 +410,29 @@ export class KimiAgentService implements AgentService {
           continue;
         }
 
+        if (
+          event &&
+          typeof event === 'object' &&
+          'line' in event &&
+          typeof (event as { line?: unknown }).line === 'string' &&
+          !emittedSessionInit
+        ) {
+          const line = (event as { line: string }).line;
+          const match = line.match(/To resume this session:\s*kimi\s+-r\s+([a-z0-9-]+)/i);
+          if (match?.[1]) {
+            metadata.sessionId = match[1];
+            emittedSessionInit = true;
+            yield {
+              type: 'session_init',
+              catId: this.catId,
+              sessionId: match[1],
+              metadata: { ...metadata, sessionId: match[1] },
+              timestamp: Date.now(),
+            };
+          }
+          continue;
+        }
+
         const msg = event as KimiPrintMessage;
         if (msg?.role !== 'assistant') continue;
 
@@ -378,7 +473,28 @@ export class KimiAgentService implements AgentService {
               capability: 'thinking',
               status: 'unavailable',
               provider: 'kimi',
-              reason: 'kimi-cli 当前流式输出未提供可解析的 reasoning/thinking 字段',
+              reason: supportsThinking
+                ? 'kimi-cli 本次流式输出未提供可解析的 think/reasoning 内容'
+                : '当前 Kimi 模型能力未声明 thinking，已按普通回答处理',
+            }),
+            metadata,
+            timestamp: Date.now(),
+          };
+        }
+
+        if (imagePaths.length > 0 && !emittedImageCapability) {
+          emittedImageCapability = true;
+          yield {
+            type: 'system_info',
+            catId: this.catId,
+            content: JSON.stringify({
+              type: 'provider_capability',
+              capability: 'image_input',
+              status: supportsImageInput ? 'available' : 'limited',
+              provider: 'kimi',
+              reason: supportsImageInput
+                ? '已通过工作区附加目录 + 本地路径提示向 kimi-cli 暴露图片输入'
+                : '当前 Kimi 模型未声明 image_in，已回退为本地路径提示',
             }),
             metadata,
             timestamp: Date.now(),
