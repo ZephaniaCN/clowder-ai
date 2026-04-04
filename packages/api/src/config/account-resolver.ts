@@ -142,25 +142,15 @@ export function resolveForClient(
   preferredAccountRef?: string,
 ): RuntimeProviderProfile | null {
   const accounts = readCatalogAccounts(projectRoot);
+  const protocol = normalizeProtocol(client);
 
   // Try preferred first
   if (preferredAccountRef) {
     const preferred = accounts[preferredAccountRef];
     if (preferred) return accountToRuntimeProfile(preferredAccountRef, preferred);
-    const builtin = BUILTIN_ACCOUNT_MAP[preferredAccountRef];
-    if (builtin) {
-      return {
-        id: preferredAccountRef,
-        authType: 'oauth',
-        kind: 'builtin',
-        client: builtin.client,
-        protocol: builtin.protocol,
-      };
-    }
   }
 
   // Find accounts matching the protocol — return only if unambiguous (exactly one match)
-  const protocol = normalizeProtocol(client);
   const matches: Array<[string, AccountConfig]> = [];
   for (const [ref, account] of Object.entries(accounts)) {
     if (account.protocol === protocol) {
@@ -169,6 +159,19 @@ export function resolveForClient(
   }
   if (matches.length === 1) {
     return accountToRuntimeProfile(matches[0][0], matches[0][1]);
+  }
+
+  if (preferredAccountRef) {
+    const builtin = BUILTIN_ACCOUNT_MAP[preferredAccountRef];
+    if (builtin && builtin.protocol === protocol) {
+      return {
+        id: preferredAccountRef,
+        authType: 'oauth',
+        kind: 'builtin',
+        client: builtin.client,
+        protocol: builtin.protocol,
+      };
+    }
   }
 
   // 0 matches = no account configured; >1 = ambiguous → fall through to legacy

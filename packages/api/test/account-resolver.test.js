@@ -197,6 +197,21 @@ describe('account-resolver (4b unified runtime resolution)', () => {
     assert.equal(profile.id, 'my-ant');
   });
 
+  it('resolveForClient prefers protocol match over stale builtin ref when exactly one concrete account exists', async () => {
+    const { resolveForClient } = await import(`../dist/config/account-resolver.js?t=${Date.now()}-9b`);
+    await writeCatalog({
+      'moonshot-api': { authType: 'api_key', protocol: 'kimi', baseUrl: 'https://api.moonshot.ai/v1' },
+    });
+    await writeCredentials({ 'moonshot-api': { apiKey: 'sk-kimi' } });
+
+    const profile = resolveForClient(projectRoot, 'kimi', 'kimi');
+    assert.ok(profile);
+    assert.equal(profile.id, 'moonshot-api');
+    assert.equal(profile.kind, 'api_key');
+    assert.equal(profile.protocol, 'kimi');
+    assert.equal(profile.apiKey, 'sk-kimi');
+  });
+
   it('resolveForClient returns baseUrl from custom account (game domain P2-1 pattern)', async () => {
     const { resolveForClient } = await import(`../dist/config/account-resolver.js?t=${Date.now()}-10`);
     await writeCatalog({
