@@ -263,7 +263,12 @@ test('injects cat-cafe MCP config file when callback env is present', async () =
     const promise = collect(
       service.invoke('Hello', {
         workingDirectory: projectDir,
-        callbackEnv: { KIMI_SHARE_DIR: shareDir, CAT_CAFE_API_URL: 'http://127.0.0.1:3004' },
+        callbackEnv: {
+          KIMI_SHARE_DIR: shareDir,
+          CAT_CAFE_API_URL: 'http://127.0.0.1:3004',
+          CAT_CAFE_INVOCATION_ID: 'invoke-123',
+          CAT_CAFE_CALLBACK_TOKEN: 'token-123',
+        },
       }),
     );
     const args = spawnFn.mock.calls[0].arguments[1];
@@ -274,6 +279,9 @@ test('injects cat-cafe MCP config file when callback env is present', async () =
     assert.ok(mcpConfig.mcpServers['cat-cafe']);
     assert.ok(mcpConfig.mcpServers.filesystem);
     assert.equal(mcpConfig.mcpServers['cat-cafe'].command, 'node');
+    assert.equal(mcpConfig.mcpServers['cat-cafe'].env.CAT_CAFE_API_URL, 'http://127.0.0.1:3004');
+    assert.equal(mcpConfig.mcpServers['cat-cafe'].env.CAT_CAFE_INVOCATION_ID, 'invoke-123');
+    assert.equal(mcpConfig.mcpServers['cat-cafe'].env.CAT_CAFE_CALLBACK_TOKEN, 'token-123');
 
     emitKimiEvents(proc, [{ role: 'assistant', content: 'ok' }]);
     await promise;

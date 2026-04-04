@@ -32,6 +32,13 @@ import { resolveDefaultClaudeMcpServerPath } from './ClaudeAgentService.js';
 const log = createModuleLogger('kimi-agent');
 const DEFAULT_KIMI_BASE_URL = 'https://api.moonshot.ai/v1';
 const DEFAULT_KIMI_MODEL_ALIAS = 'kimi-code/kimi-for-coding';
+const CAT_CAFE_CALLBACK_ENV_KEYS = [
+  'CAT_CAFE_API_URL',
+  'CAT_CAFE_INVOCATION_ID',
+  'CAT_CAFE_CALLBACK_TOKEN',
+  'CAT_CAFE_USER_ID',
+  'CAT_CAFE_SIGNAL_USER',
+] as const;
 
 interface KimiAgentServiceOptions {
   catId?: CatId;
@@ -360,7 +367,14 @@ export class KimiAgentService implements AgentService {
       config.mcpServers && typeof config.mcpServers === 'object' && !Array.isArray(config.mcpServers)
         ? { ...(config.mcpServers as Record<string, unknown>) }
         : {};
-    currentServers['cat-cafe'] = { command: 'node', args: [this.mcpServerPath] };
+    const catCafeEnv = Object.fromEntries(
+      CAT_CAFE_CALLBACK_ENV_KEYS.map((key) => [key, callbackEnv[key]]).filter(([, value]) => Boolean(value)),
+    );
+    currentServers['cat-cafe'] = {
+      command: 'node',
+      args: [this.mcpServerPath],
+      ...(Object.keys(catCafeEnv).length > 0 ? { env: catCafeEnv } : {}),
+    };
     const nextConfig = { ...config, mcpServers: currentServers };
     const dir = mkdtempSync(join(resolveKimiShareDir(callbackEnv), 'tmp-mcp-'));
     const path = join(dir, 'mcp.json');
