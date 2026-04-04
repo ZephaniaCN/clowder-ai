@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
@@ -200,4 +200,53 @@ test('api-key mode passes config file path instead of embedding secrets in argv'
   assert.ok(args.includes('--config-file'));
   assert.ok(!joined.includes('sk-kimi-secret'));
   assert.ok(!joined.includes('"api_key"'));
+});
+
+test('injects cat-cafe MCP config file when callback env is present', async () => {
+  const shareDir = mkdtempSync(join(tmpdir(), 'kimi-share-mcp-'));
+  const projectDir = mkdtempSync(join(tmpdir(), 'kimi-project-mcp-'));
+  const mcpServerDir = mkdtempSync(join(tmpdir(), 'kimi-mcp-server-'));
+  const proc = createMockProcess();
+  const spawnFn = createMockSpawnFn(proc);
+  const service = new KimiAgentService({
+    spawnFn,
+    model: 'kimi-code/kimi-for-coding',
+    mcpServerPath: join(mcpServerDir, 'index.js'),
+  });
+
+  try {
+    mkdirSync(join(projectDir, '.kimi'), { recursive: true });
+    writeFileSync(
+      join(projectDir, '.kimi', 'mcp.json'),
+      JSON.stringify({
+        mcpServers: {
+          filesystem: { command: 'npx', args: ['-y', '@mcp/fs'] },
+        },
+      }),
+      'utf8',
+    );
+    writeFileSync(join(mcpServerDir, 'index.js'), '// stub', 'utf8');
+
+    const promise = collect(
+      service.invoke('Hello', {
+        workingDirectory: projectDir,
+        callbackEnv: { KIMI_SHARE_DIR: shareDir, CAT_CAFE_API_URL: 'http://127.0.0.1:3004' },
+      }),
+    );
+    const args = spawnFn.mock.calls[0].arguments[1];
+    const mcpFlagIndex = args.indexOf('--mcp-config-file');
+    assert.ok(mcpFlagIndex >= 0);
+    const mcpPath = args[mcpFlagIndex + 1];
+    const mcpConfig = JSON.parse(readFileSync(mcpPath, 'utf8'));
+    assert.ok(mcpConfig.mcpServers['cat-cafe']);
+    assert.ok(mcpConfig.mcpServers.filesystem);
+    assert.equal(mcpConfig.mcpServers['cat-cafe'].command, 'node');
+
+    emitKimiEvents(proc, [{ role: 'assistant', content: 'ok' }]);
+    await promise;
+  } finally {
+    rmSync(shareDir, { recursive: true, force: true });
+    rmSync(projectDir, { recursive: true, force: true });
+    rmSync(mcpServerDir, { recursive: true, force: true });
+  }
 });

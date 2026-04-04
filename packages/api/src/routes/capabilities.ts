@@ -479,11 +479,12 @@ export const capabilitiesRoutes: FastifyPluginAsync = async (app) => {
     // Use listSkillSubdirs() for provider dirs so stale/broken symlinks do not
     // resurrect deleted skills in the board.
     const projectSkillsDir = join(projectRoot, '.claude', 'skills');
-    const [claudeProjectSkills, claudeUserSkills, codexSkills, geminiSkills] = await Promise.all([
+    const [claudeProjectSkills, claudeUserSkills, codexSkills, geminiSkills, kimiSkills] = await Promise.all([
       listSkillSubdirs(projectSkillsDir),
       listSkillSubdirs(join(home, '.claude', 'skills')),
       listSkillSubdirs(join(home, '.codex', 'skills'), ['.system']),
       listSkillSubdirs(join(home, '.gemini', 'skills')),
+      listSkillSubdirs(join(home, '.kimi', 'skills')),
     ]);
 
     // F041 bug fix: Also scan cat-cafe-skills/ for project-level skill detection.
@@ -495,7 +496,11 @@ export const capabilitiesRoutes: FastifyPluginAsync = async (app) => {
     const hasProjectCatCafeSkillsDir = existsSync(catCafeSkillsDir);
 
     const allScansOk =
-      claudeProjectSkills !== null && claudeUserSkills !== null && codexSkills !== null && geminiSkills !== null;
+      claudeProjectSkills !== null &&
+      claudeUserSkills !== null &&
+      codexSkills !== null &&
+      geminiSkills !== null &&
+      kimiSkills !== null;
 
     // F041 re-open: Track project-level skills for source classification
     // Includes both .claude/skills/ AND cat-cafe-skills/ entries
@@ -505,6 +510,8 @@ export const capabilitiesRoutes: FastifyPluginAsync = async (app) => {
       anthropic: [...new Set([...(claudeProjectSkills ?? []), ...(claudeUserSkills ?? [])])],
       openai: codexSkills ?? [],
       google: geminiSkills ?? [],
+      kimi: kimiSkills ?? [],
+      omx: codexSkills ?? [],
     };
 
     // 3. Sync discovered skills into capabilities.json
@@ -609,6 +616,7 @@ export const capabilitiesRoutes: FastifyPluginAsync = async (app) => {
       skillDirCandidates.push({ name, dir: join(home, '.claude', 'skills', name) });
       skillDirCandidates.push({ name, dir: join(home, '.codex', 'skills', name) });
       skillDirCandidates.push({ name, dir: join(home, '.gemini', 'skills', name) });
+      skillDirCandidates.push({ name, dir: join(home, '.kimi', 'skills', name) });
     }
 
     const metaResults = await Promise.all(
@@ -729,16 +737,18 @@ export const capabilitiesRoutes: FastifyPluginAsync = async (app) => {
       claude: join(home, '.claude', 'skills'),
       codex: join(home, '.codex', 'skills'),
       gemini: join(home, '.gemini', 'skills'),
+      kimi: join(home, '.kimi', 'skills'),
     };
     await Promise.all(
       catCafeSkillItems.map(async (item) => {
         const expectedTarget = join(mountSkillsSrc, item.id);
-        const [claude, codex, gemini] = await Promise.all([
+        const [claude, codex, gemini, kimi] = await Promise.all([
           isCorrectSymlink(join(providerDirs.claude, item.id), expectedTarget, item.id, mainSkillsSrc),
           isCorrectSymlink(join(providerDirs.codex, item.id), expectedTarget, item.id, mainSkillsSrc),
           isCorrectSymlink(join(providerDirs.gemini, item.id), expectedTarget, item.id, mainSkillsSrc),
+          isCorrectSymlink(join(providerDirs.kimi, item.id), expectedTarget, item.id, mainSkillsSrc),
         ]);
-        item.mounts = { claude, codex, gemini };
+        item.mounts = { claude, codex, gemini, kimi };
       }),
     );
 

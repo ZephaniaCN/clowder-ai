@@ -18,7 +18,7 @@
 
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { type CatId, createCatId } from '@cat-cafe/shared';
 import { getCatModel } from '../../../../../config/cat-models.js';
 import { createModuleLogger } from '../../../../../infrastructure/logger.js';
@@ -27,6 +27,7 @@ import { formatCliNotFoundError, resolveCliCommand } from '../../../../../utils/
 import { isCliError, isCliTimeout, isLivenessWarning, spawnCli } from '../../../../../utils/cli-spawn.js';
 import type { SpawnFn } from '../../../../../utils/cli-types.js';
 import type { AgentMessage, AgentService, AgentServiceOptions, MessageMetadata } from '../../types.js';
+import { resolveDefaultClaudeMcpServerPath } from './ClaudeAgentService.js';
 
 const log = createModuleLogger('kimi-agent');
 const DEFAULT_KIMI_BASE_URL = 'https://api.moonshot.ai/v1';
@@ -36,6 +37,7 @@ interface KimiAgentServiceOptions {
   catId?: CatId;
   model?: string;
   spawnFn?: SpawnFn;
+  mcpServerPath?: string;
 }
 
 interface KimiPrintMessage {
@@ -165,11 +167,13 @@ export class KimiAgentService implements AgentService {
   readonly catId: CatId;
   private readonly spawnFn: SpawnFn | undefined;
   private readonly model: string;
+  private readonly mcpServerPath: string | undefined;
 
   constructor(options?: KimiAgentServiceOptions) {
     this.catId = options?.catId ?? createCatId('kimi');
     this.spawnFn = options?.spawnFn;
     this.model = options?.model ?? getCatModel(this.catId as string);
+    this.mcpServerPath = options?.mcpServerPath ?? process.env.CAT_CAFE_MCP_SERVER_PATH ?? resolveDefaultClaudeMcpServerPath();
   }
 
   async *invoke(prompt: string, options?: AgentServiceOptions): AsyncIterable<AgentMessage> {
@@ -179,6 +183,7 @@ export class KimiAgentService implements AgentService {
     const effectivePrompt = options?.systemPrompt ? `${options.systemPrompt}\n\n${prompt}` : prompt;
     const workingDirectory = options?.workingDirectory ?? process.cwd();
     const tempConfig = writeApiKeyConfigFile(effectiveModel, options?.callbackEnv);
+    const tempMcpConfig = this.writeMcpConfigFile(workingDirectory, options?.callbackEnv);
 
     const args = ['--print', '--output-format', 'stream-json', '--model', effectiveModel];
     if (options?.sessionId) {
@@ -193,7 +198,11 @@ export class KimiAgentService implements AgentService {
       };
     }
     args.push('--work-dir', workingDirectory);
-    args.push(...buildProjectMcpArgs(workingDirectory));
+    if (tempMcpConfig) {
+      args.push('--mcp-config-file', tempMcpConfig);
+    } else {
+      args.push(...buildProjectMcpArgs(workingDirectory));
+    }
     if (tempConfig) {
       args.push('--config-file', tempConfig.configPath);
     }
@@ -352,6 +361,37 @@ export class KimiAgentService implements AgentService {
           // best-effort cleanup
         }
       }
+      if (tempMcpConfig) {
+        try {
+          rmSync(dirname(tempMcpConfig), { recursive: true, force: true });
+        } catch {
+          // best-effort cleanup
+        }
+      }
     }
+  }
+
+  private writeMcpConfigFile(workingDirectory: string, callbackEnv?: Record<string, string>): string | null {
+    if (!callbackEnv || !this.mcpServerPath) return null;
+    const existingPath = join(workingDirectory, '.kimi', 'mcp.json');
+    let config: Record<string, unknown> = {};
+    if (existsSync(existingPath)) {
+      try {
+        const raw = JSON.parse(readFileSync(existingPath, 'utf-8')) as Record<string, unknown>;
+        config = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+      } catch {
+        config = {};
+      }
+    }
+    const currentServers =
+      config.mcpServers && typeof config.mcpServers === 'object' && !Array.isArray(config.mcpServers)
+        ? { ...(config.mcpServers as Record<string, unknown>) }
+        : {};
+    currentServers['cat-cafe'] = { command: 'node', args: [this.mcpServerPath] };
+    const nextConfig = { ...config, mcpServers: currentServers };
+    const dir = mkdtempSync(join(resolveKimiShareDir(callbackEnv), 'tmp-mcp-'));
+    const path = join(dir, 'mcp.json');
+    writeFileSync(path, JSON.stringify(nextConfig), { encoding: 'utf8', mode: 0o600 });
+    return path;
   }
 }
