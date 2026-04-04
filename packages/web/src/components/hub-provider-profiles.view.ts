@@ -1,5 +1,5 @@
-import type { BuiltinAccountClient, ProfileItem } from './hub-provider-profiles.types';
 import { inferBuiltinClientFromProfile } from './hub-provider-client-inference';
+import type { BuiltinAccountClient, ProfileItem } from './hub-provider-profiles.types';
 
 const FALLBACK_BUILTIN_PROFILE_SPECS: Array<{
   client: BuiltinAccountClient;

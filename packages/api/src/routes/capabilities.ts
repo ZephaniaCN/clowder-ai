@@ -538,11 +538,7 @@ export const capabilitiesRoutes: FastifyPluginAsync = async (app) => {
     const catCafeOwnSkills = await listSkillSubdirs(catCafeSkillsDir);
     const hasProjectCatCafeSkillsDir = existsSync(catCafeSkillsDir);
 
-    const projectSkillNames = new Set([
-      ...claudeProjectSkills,
-      ...projectKimiSkills,
-      ...(catCafeOwnSkills ?? []),
-    ]);
+    const projectSkillNames = new Set([...claudeProjectSkills, ...projectKimiSkills, ...(catCafeOwnSkills ?? [])]);
 
     // 3. Sync discovered skills into capabilities.json
     const allSkillNames = new Set<string>();

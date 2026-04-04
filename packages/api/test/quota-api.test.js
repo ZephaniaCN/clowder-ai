@@ -6,7 +6,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
@@ -216,7 +216,6 @@ describe('GET /api/quota/probes', () => {
     }
   });
 
-
   it('exposes a manual refresh action for Kimi local quota', async () => {
     const app = await buildApp();
     try {
@@ -305,7 +304,6 @@ describe('GET /api/quota/summary', () => {
     }
   });
 
-
   it('includes Kimi utilization in summary risk calculations', async () => {
     const previousShareDir = process.env.KIMI_SHARE_DIR;
     const shareDir = join(tmpdir(), `kimi-summary-${Date.now()}`);
@@ -325,7 +323,10 @@ describe('GET /api/quota/summary', () => {
       const body = res.json();
       assert.equal(body.platforms.kimi.status, 'error');
       assert.equal(body.risk.level, 'high');
-      assert.equal(body.risk.reasons.some((reason) => /97%/.test(String(reason))), true);
+      assert.equal(
+        body.risk.reasons.some((reason) => /97%/.test(String(reason))),
+        true,
+      );
       assert.equal(body.actions.refreshKimiPath, '/api/quota/refresh/kimi');
     } finally {
       if (oldEnabled != null) process.env.QUOTA_OFFICIAL_REFRESH_ENABLED = oldEnabled;
@@ -355,7 +356,10 @@ describe('GET /api/quota/summary', () => {
       const res = await app.inject({ method: 'GET', url: '/api/quota/summary' });
       const body = res.json();
       assert.notEqual(body.platforms.kimi.status, 'error');
-      assert.equal(body.risk.reasons.some((reason) => /100%/.test(String(reason)) && /Kimi/.test(String(reason))), false);
+      assert.equal(
+        body.risk.reasons.some((reason) => /100%/.test(String(reason)) && /Kimi/.test(String(reason))),
+        false,
+      );
     } finally {
       if (oldEnabled != null) process.env.QUOTA_OFFICIAL_REFRESH_ENABLED = oldEnabled;
       else delete process.env.QUOTA_OFFICIAL_REFRESH_ENABLED;
@@ -695,7 +699,6 @@ describe('PATCH /api/quota/antigravity', () => {
     }
   });
 });
-
 
 describe('POST /api/quota/refresh/kimi', () => {
   it('refreshes local Kimi session usage on demand', async () => {

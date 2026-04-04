@@ -34,7 +34,6 @@ function protocolLabel(protocol: string | undefined): string {
   return PROTOCOL_OPTIONS.find((o) => o.value === protocol)?.label ?? protocol ?? '自动';
 }
 
-
 function summaryText(profile: ProfileItem): string | null {
   if (profile.builtin) return null;
   const host = profile.baseUrl?.replace(/^https?:\/\//, '') ?? '(未设置)';

@@ -536,7 +536,9 @@ describe('GET /api/capabilities (Fastify)', () => {
     assert.equal(res.statusCode, 200);
     const body = res.json();
 
-    const catCafeSkill = (body.items ?? []).find((item) => item.type === 'skill' && item.source === 'cat-cafe' && item.mounts);
+    const catCafeSkill = (body.items ?? []).find(
+      (item) => item.type === 'skill' && item.source === 'cat-cafe' && item.mounts,
+    );
     assert.ok(catCafeSkill, 'expected at least one cat-cafe skill with mount data');
     assert.equal(typeof catCafeSkill.mounts.kimi, 'boolean');
 

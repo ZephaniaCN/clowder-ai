@@ -11,7 +11,7 @@
  */
 
 import { execFile } from 'node:child_process';
-import { readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { closeSync, openSync, readdirSync, readFileSync, readSync, realpathSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, normalize, resolve } from 'node:path';
 import { promisify } from 'node:util';
@@ -343,7 +343,10 @@ function normalizeKimiWorkDirPath(pathValue: string): string {
   }
 }
 
-function resolvePreferredKimiSessionWireFile(shareDir: string, workingDirectory: string = process.cwd()): string | null {
+function resolvePreferredKimiSessionWireFile(
+  shareDir: string,
+  workingDirectory: string = process.cwd(),
+): string | null {
   const statePath = join(shareDir, 'kimi.json');
   try {
     const raw = JSON.parse(readFileSync(statePath, 'utf-8')) as { work_dirs?: Array<Record<string, unknown>> };
@@ -398,37 +401,60 @@ function findNewestKimiWireFile(shareDir: string): string | null {
 }
 
 function readLatestKimiWireStatus(wirePath: string): KimiWireStatusSnapshot | null {
+  const CHUNK_SIZE = 64 * 1024;
+  const parseStatusLine = (line: string): KimiWireStatusSnapshot | null => {
+    const parsed = JSON.parse(line) as {
+      message?: { type?: string; payload?: Record<string, unknown> };
+    };
+    if (parsed?.message?.type !== 'StatusUpdate') return null;
+    const payload = parsed.message.payload;
+    if (!payload || typeof payload !== 'object') return null;
+    const contextUsage = payload.context_usage;
+    if (typeof contextUsage !== 'number' || !Number.isFinite(contextUsage)) return null;
+    const tokenUsage =
+      payload.token_usage && typeof payload.token_usage === 'object'
+        ? (payload.token_usage as Record<string, unknown>)
+        : undefined;
+    return {
+      contextUsage,
+      inputTokens: typeof tokenUsage?.input_other === 'number' ? tokenUsage.input_other : undefined,
+      outputTokens: typeof tokenUsage?.output === 'number' ? tokenUsage.output : undefined,
+      cacheReadTokens: typeof tokenUsage?.input_cache_read === 'number' ? tokenUsage.input_cache_read : undefined,
+      cacheCreationTokens:
+        typeof tokenUsage?.input_cache_creation === 'number' ? tokenUsage.input_cache_creation : undefined,
+      messageId: typeof payload.message_id === 'string' ? payload.message_id : undefined,
+    };
+  };
+
   try {
-    const lines = readFileSync(wirePath, 'utf-8')
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean);
-    for (let index = lines.length - 1; index >= 0; index -= 1) {
-      const line = lines[index];
-      if (!line) continue;
-      const parsed = JSON.parse(line) as {
-        message?: { type?: string; payload?: Record<string, unknown> };
-      };
-      if (parsed?.message?.type !== 'StatusUpdate') continue;
-      const payload = parsed.message.payload;
-      if (!payload || typeof payload !== 'object') continue;
-      const contextUsage = payload.context_usage;
-      if (typeof contextUsage !== 'number' || !Number.isFinite(contextUsage)) continue;
-      const tokenUsage =
-        payload.token_usage && typeof payload.token_usage === 'object'
-          ? (payload.token_usage as Record<string, unknown>)
-          : undefined;
-      return {
-        contextUsage,
-        inputTokens: typeof tokenUsage?.input_other === 'number' ? tokenUsage.input_other : undefined,
-        outputTokens: typeof tokenUsage?.output === 'number' ? tokenUsage.output : undefined,
-        cacheReadTokens: typeof tokenUsage?.input_cache_read === 'number' ? tokenUsage.input_cache_read : undefined,
-        cacheCreationTokens:
-          typeof tokenUsage?.input_cache_creation === 'number' ? tokenUsage.input_cache_creation : undefined,
-        messageId: typeof payload.message_id === 'string' ? payload.message_id : undefined,
-      };
+    const fd = openSync(wirePath, 'r');
+    try {
+      const { size } = statSync(wirePath);
+      let position = size;
+      let remainder = '';
+
+      while (position > 0) {
+        const readSize = Math.min(CHUNK_SIZE, position);
+        position -= readSize;
+        const buffer = Buffer.allocUnsafe(readSize);
+        readSync(fd, buffer, 0, readSize, position);
+        const chunk = buffer.toString('utf8') + remainder;
+        const lines = chunk.split('\n');
+        remainder = lines.shift() ?? '';
+
+        for (let index = lines.length - 1; index >= 0; index -= 1) {
+          const line = lines[index]?.trim();
+          if (!line) continue;
+          const snapshot = parseStatusLine(line);
+          if (snapshot) return snapshot;
+        }
+      }
+
+      const finalLine = remainder.trim();
+      return finalLine ? parseStatusLine(finalLine) : null;
+    } finally {
+      closeSync(fd);
     }
-    return null;
   } catch {
     return null;
   }
@@ -702,9 +728,12 @@ export function buildQuotaSummary(env: NodeJS.ProcessEnv = process.env): QuotaSu
   const kimi = buildKimiSummaryPlatform();
   const antigravity = buildAntigravitySummaryPlatform();
 
-  const utilizationValues = [codex.utilizationPercent, claude.utilizationPercent, kimi.utilizationPercent, antigravity.utilizationPercent].filter(
-    (value): value is number => typeof value === 'number' && Number.isFinite(value),
-  );
+  const utilizationValues = [
+    codex.utilizationPercent,
+    claude.utilizationPercent,
+    kimi.utilizationPercent,
+    antigravity.utilizationPercent,
+  ].filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
   const maxUtilization = utilizationValues.length > 0 ? Math.max(...utilizationValues) : null;
 
   const reasons: string[] = [];

@@ -908,6 +908,14 @@ export const ENV_VARS: EnvDefinition[] = [
     sensitive: false,
     hubVisible: false,
   },
+  {
+    name: 'KIMI_CONFIG_FILE',
+    defaultValue: '~/.kimi/config.toml',
+    description: '官方 kimi-cli 配置文件路径覆盖',
+    category: 'kimi',
+    sensitive: false,
+    hubVisible: false,
+  },
 
   // --- tts ---
   {
