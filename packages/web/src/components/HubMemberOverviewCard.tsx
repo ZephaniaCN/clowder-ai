@@ -23,6 +23,7 @@ function clientRuntimeLabel(cat: CatData, configCat?: CatConfig) {
   if (accountRef.includes('claude')) return 'Claude';
   if (accountRef.includes('codex')) return 'Codex';
   if (accountRef.includes('gemini')) return 'Gemini';
+  if (accountRef.includes('kimi') || accountRef.includes('moonshot')) return 'Kimi';
   if (accountRef.includes('opencode')) return 'OpenCode';
   if (accountRef.includes('dare')) return 'Dare';
   if (cat.provider === 'antigravity') return 'Antigravity';
@@ -37,6 +38,7 @@ function accountSummary(cat: CatData) {
     accountRef === 'claude' ||
     accountRef === 'codex' ||
     accountRef === 'gemini' ||
+    accountRef === 'kimi' ||
     accountRef === 'dare' ||
     accountRef === 'opencode'
   ) {

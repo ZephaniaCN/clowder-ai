@@ -26,7 +26,9 @@ import { formatCliExitError } from '../../../../../utils/cli-format.js';
 import { formatCliNotFoundError, resolveCliCommand } from '../../../../../utils/cli-resolve.js';
 import { isCliError, isCliTimeout, isLivenessWarning, spawnCli } from '../../../../../utils/cli-spawn.js';
 import type { SpawnFn } from '../../../../../utils/cli-types.js';
-import type { AgentMessage, AgentService, AgentServiceOptions, MessageMetadata } from '../../types.js';
+import type { AgentMessage, AgentService, AgentServiceOptions, MessageMetadata, TokenUsage } from '../../types.js';
+import { appendLocalImagePathHints } from './image-cli-bridge.js';
+import { extractImagePaths } from './image-paths.js';
 import { resolveDefaultClaudeMcpServerPath } from './ClaudeAgentService.js';
 
 const log = createModuleLogger('kimi-agent');
@@ -51,6 +53,14 @@ interface KimiPrintMessage {
   role?: unknown;
   content?: unknown;
   tool_calls?: unknown;
+  thinking?: unknown;
+  reasoning?: unknown;
+  reasoning_content?: unknown;
+  thought?: unknown;
+  session_id?: unknown;
+  sessionId?: unknown;
+  usage?: unknown;
+  stats?: unknown;
 }
 
 function parseToolArguments(raw: unknown): Record<string, unknown> {
@@ -82,6 +92,51 @@ function extractTextContent(content: unknown): string | null {
     .join('\n')
     .trim();
   return text.length > 0 ? text : null;
+}
+
+function extractThinkingContent(message: KimiPrintMessage): string | null {
+  const candidates = [message.thinking, message.reasoning, message.reasoning_content, message.thought];
+  for (const candidate of candidates) {
+    const text = extractTextContent(candidate);
+    if (text) return text;
+  }
+  return null;
+}
+
+function parseUsage(candidate: unknown): TokenUsage | null {
+  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return null;
+  const stats = candidate as Record<string, unknown>;
+  const usage = {} as TokenUsage;
+  if (typeof stats.total_tokens === 'number') usage.totalTokens = stats.total_tokens;
+  if (typeof stats.input_tokens === 'number') usage.inputTokens = stats.input_tokens;
+  if (typeof stats.output_tokens === 'number') usage.outputTokens = stats.output_tokens;
+  if (typeof stats.cached_input_tokens === 'number') usage.cacheReadTokens = stats.cached_input_tokens;
+  if (typeof stats.last_turn_input_tokens === 'number') usage.lastTurnInputTokens = stats.last_turn_input_tokens;
+  if (typeof stats.context_window === 'number') usage.contextWindowSize = stats.context_window;
+  if (typeof stats.context_used_tokens === 'number') usage.contextUsedTokens = stats.context_used_tokens;
+  return Object.keys(usage).length > 0 ? usage : null;
+}
+
+function readSessionIdFromMessage(message: KimiPrintMessage): string | undefined {
+  const values = [message.session_id, message.sessionId];
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim().length > 0) return value;
+  }
+  return undefined;
+}
+
+function buildKimiPrompt(prompt: string, systemPrompt?: string, imagePaths: readonly string[] = []): string {
+  const basePrompt = appendLocalImagePathHints(prompt, imagePaths);
+  if (!systemPrompt?.trim()) return basePrompt;
+  return [
+    '<system_instructions>',
+    systemPrompt.trim(),
+    '</system_instructions>',
+    '',
+    '<user_request>',
+    basePrompt,
+    '</user_request>',
+  ].join('\n');
 }
 
 function resolveKimiShareDir(callbackEnv?: Record<string, string>): string {
@@ -165,7 +220,8 @@ export class KimiAgentService implements AgentService {
     const requestedModel = options?.callbackEnv?.CAT_CAFE_KIMI_MODEL_OVERRIDE ?? this.model;
     const effectiveModel = resolveKimiModelAlias(requestedModel, options?.callbackEnv);
     const metadata: MessageMetadata = { provider: 'kimi', model: effectiveModel };
-    const effectivePrompt = options?.systemPrompt ? `${options.systemPrompt}\n\n${prompt}` : prompt;
+    const imagePaths = extractImagePaths(options?.contentBlocks, options?.uploadDir);
+    const effectivePrompt = buildKimiPrompt(prompt, options?.systemPrompt, imagePaths);
     const workingDirectory = options?.workingDirectory ?? process.cwd();
     const apiKeyEnv = buildApiKeyEnv(effectiveModel, options?.callbackEnv);
     const tempMcpConfig = this.writeMcpConfigFile(workingDirectory, options?.callbackEnv);
@@ -208,6 +264,7 @@ export class KimiAgentService implements AgentService {
       }
 
       let emittedSessionInit = Boolean(options?.sessionId);
+      let emittedThinkingUnavailable = false;
       const cliOpts = {
         command: kimiCommand,
         args,
@@ -284,6 +341,50 @@ export class KimiAgentService implements AgentService {
         const msg = event as KimiPrintMessage;
         if (msg?.role !== 'assistant') continue;
 
+        const usage = parseUsage(msg.usage) ?? parseUsage(msg.stats);
+        if (usage) metadata.usage = { ...(metadata.usage ?? {}), ...usage };
+
+        const messageSessionId = readSessionIdFromMessage(msg);
+        if (messageSessionId) {
+          metadata.sessionId = messageSessionId;
+          if (!emittedSessionInit) {
+            emittedSessionInit = true;
+            yield {
+              type: 'session_init',
+              catId: this.catId,
+              sessionId: messageSessionId,
+              metadata,
+              timestamp: Date.now(),
+            };
+          }
+        }
+
+        const thinking = extractThinkingContent(msg);
+        if (thinking) {
+          yield {
+            type: 'system_info',
+            catId: this.catId,
+            content: JSON.stringify({ type: 'thinking', catId: this.catId, text: thinking }),
+            metadata,
+            timestamp: Date.now(),
+          };
+        } else if (!emittedThinkingUnavailable) {
+          emittedThinkingUnavailable = true;
+          yield {
+            type: 'system_info',
+            catId: this.catId,
+            content: JSON.stringify({
+              type: 'provider_capability',
+              capability: 'thinking',
+              status: 'unavailable',
+              provider: 'kimi',
+              reason: 'kimi-cli 当前流式输出未提供可解析的 reasoning/thinking 字段',
+            }),
+            metadata,
+            timestamp: Date.now(),
+          };
+        }
+
         const content = extractTextContent(msg.content);
         if (content) {
           yield {
@@ -324,7 +425,7 @@ export class KimiAgentService implements AgentService {
             type: 'session_init',
             catId: this.catId,
             sessionId: inferredSessionId,
-            metadata,
+            metadata: { ...metadata, sessionId: inferredSessionId },
             timestamp: Date.now(),
           };
         }

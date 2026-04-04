@@ -19,12 +19,20 @@ function maxUtilization(quota: QuotaResponse | null): number {
   for (const item of quota.codex.usageItems) max = Math.max(max, toUtilization(item));
   for (const item of quota.claude.usageItems ?? []) max = Math.max(max, toUtilization(item));
   for (const item of quota.gemini?.usageItems ?? []) max = Math.max(max, toUtilization(item));
+  for (const item of quota.kimi?.usageItems ?? []) max = Math.max(max, toUtilization(item));
   for (const item of quota.antigravity?.usageItems ?? []) max = Math.max(max, toUtilization(item));
   return max;
 }
 
 function resolveRisk(quota: QuotaResponse | null, refreshError: string | null): 'ok' | 'warn' | 'high' {
-  if (refreshError || quota?.codex?.error || quota?.claude?.error || quota?.gemini?.error || quota?.antigravity?.error)
+  if (
+    refreshError ||
+    quota?.codex?.error ||
+    quota?.claude?.error ||
+    quota?.gemini?.error ||
+    quota?.kimi?.error ||
+    quota?.antigravity?.error
+  )
     return 'high';
   const max = maxUtilization(quota);
   if (max >= 95) return 'high';
@@ -168,6 +176,7 @@ export function HubQuotaBoardTab() {
         quota?.codex?.error,
         quota?.claude?.error,
         quota?.gemini?.error,
+        quota?.kimi?.error,
         quota?.antigravity?.error,
       ].filter(Boolean) as string[],
     ),

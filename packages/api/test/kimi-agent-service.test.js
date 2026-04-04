@@ -91,6 +91,7 @@ test('yields text, tool_use, inferred session_init, and done on print-mode succe
     emitKimiEvents(proc, [
       {
         role: 'assistant',
+        thinking: '先思考一下目录结构。',
         content: '先看一下目录。',
         tool_calls: [
           {
@@ -107,16 +108,20 @@ test('yields text, tool_use, inferred session_init, and done on print-mode succe
     ]);
 
     const msgs = await promise;
-    assert.equal(msgs[0].type, 'text');
-    assert.equal(msgs[0].content, '先看一下目录。');
-    assert.equal(msgs[1].type, 'tool_use');
-    assert.equal(msgs[1].toolName, 'Shell');
-    assert.deepEqual(msgs[1].toolInput, { command: 'ls' });
-    assert.equal(msgs[2].type, 'text');
-    assert.equal(msgs[2].content, '已经完成。');
-    assert.equal(msgs[3].type, 'session_init');
-    assert.equal(msgs[3].sessionId, 'kimi-session-123');
-    assert.equal(msgs[4].type, 'done');
+    assert.equal(msgs[0].type, 'system_info');
+    assert.match(msgs[0].content, /thinking/);
+    assert.equal(msgs[1].type, 'text');
+    assert.equal(msgs[1].content, '先看一下目录。');
+    assert.equal(msgs[2].type, 'tool_use');
+    assert.equal(msgs[2].toolName, 'Shell');
+    assert.deepEqual(msgs[2].toolInput, { command: 'ls' });
+    assert.equal(msgs[3].type, 'system_info');
+    assert.match(msgs[3].content, /provider_capability/);
+    assert.equal(msgs[4].type, 'text');
+    assert.equal(msgs[4].content, '已经完成。');
+    assert.equal(msgs[5].type, 'session_init');
+    assert.equal(msgs[5].sessionId, 'kimi-session-123');
+    assert.equal(msgs[6].type, 'done');
 
     const args = spawnFn.mock.calls[0].arguments[1];
     assert.ok(args.includes('--print'));
@@ -140,8 +145,10 @@ test('uses --session for resume and emits session_init immediately', async () =>
 
   assert.equal(msgs[0].type, 'session_init');
   assert.equal(msgs[0].sessionId, 'resume-kimi-456');
-  assert.equal(msgs[1].type, 'text');
-  assert.equal(msgs[1].content, 'Resumed Kimi.');
+  assert.equal(msgs[1].type, 'system_info');
+  assert.match(msgs[1].content, /provider_capability/);
+  assert.equal(msgs[2].type, 'text');
+  assert.equal(msgs[2].content, 'Resumed Kimi.');
 
   const args = spawnFn.mock.calls[0].arguments[1];
   const sessionFlagIndex = args.indexOf('--session');
@@ -290,4 +297,63 @@ test('injects cat-cafe MCP config file when callback env is present', async () =
     rmSync(projectDir, { recursive: true, force: true });
     rmSync(mcpServerDir, { recursive: true, force: true });
   }
+});
+
+test('wraps system prompt separately and adds local image path hints', async () => {
+  const proc = createMockProcess();
+  const spawnFn = createMockSpawnFn(proc);
+  const service = new KimiAgentService({ spawnFn, model: 'kimi-code/kimi-for-coding' });
+  const uploadDir = mkdtempSync(join(tmpdir(), 'kimi-upload-'));
+  const imagePath = join(uploadDir, 'example.png');
+  writeFileSync(imagePath, 'fake-image', 'utf8');
+
+  try {
+    const promise = collect(
+      service.invoke('帮我分析图片', {
+        systemPrompt: '你是金吉拉，回答要简洁。',
+        contentBlocks: [{ type: 'image', url: '/uploads/example.png' }],
+        uploadDir,
+      }),
+    );
+    emitKimiEvents(proc, [{ role: 'assistant', content: 'ok' }]);
+    await promise;
+
+    const args = spawnFn.mock.calls[0].arguments[1];
+    const promptFlagIndex = args.indexOf('--prompt');
+    assert.ok(promptFlagIndex >= 0);
+    const effectivePrompt = args[promptFlagIndex + 1];
+    assert.match(effectivePrompt, /<system_instructions>/);
+    assert.match(effectivePrompt, /你是金吉拉/);
+    assert.match(effectivePrompt, /example\.png/);
+  } finally {
+    rmSync(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('captures usage and session id from kimi stream events when available', async () => {
+  const proc = createMockProcess();
+  const spawnFn = createMockSpawnFn(proc);
+  const service = new KimiAgentService({ spawnFn, model: 'kimi-code/kimi-for-coding' });
+
+  const promise = collect(service.invoke('Hello'));
+  emitKimiEvents(proc, [
+    {
+      role: 'assistant',
+      session_id: 'kimi-live-session',
+      usage: {
+        input_tokens: 12,
+        output_tokens: 34,
+        total_tokens: 46,
+      },
+      content: 'ok',
+    },
+  ]);
+  const msgs = await promise;
+  const session = msgs.find((msg) => msg.type === 'session_init');
+  const text = msgs.find((msg) => msg.type === 'text');
+  assert.equal(session?.sessionId, 'kimi-live-session');
+  assert.equal(text?.metadata?.sessionId, 'kimi-live-session');
+  assert.equal(text?.metadata?.usage?.inputTokens, 12);
+  assert.equal(text?.metadata?.usage?.outputTokens, 34);
+  assert.equal(text?.metadata?.usage?.totalTokens, 46);
 });
