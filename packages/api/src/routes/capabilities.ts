@@ -214,7 +214,6 @@ function getCliConfigPaths(projectRoot: string) {
     openai: join(projectRoot, '.codex', 'config.toml'),
     google: join(projectRoot, '.gemini', 'settings.json'),
     kimi: join(projectRoot, '.kimi', 'mcp.json'),
-    omx: join(projectRoot, '.codex', 'config.toml'),
   };
 }
 
@@ -524,7 +523,6 @@ export const capabilitiesRoutes: FastifyPluginAsync = async (app) => {
       openai: codexSkills ?? [],
       google: geminiSkills ?? [],
       kimi: [...new Set([...(projectKimiSkills ?? []), ...(userKimiSkills ?? [])])],
-      omx: codexSkills ?? [],
     };
 
     // 3. Sync discovered skills into capabilities.json

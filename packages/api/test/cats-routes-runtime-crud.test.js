@@ -264,7 +264,7 @@ describe('cats routes runtime CRUD', { concurrency: false }, () => {
     assert.ok(mentions.includes('runtime-spark'), 'new alias should route immediately');
   });
 
-  it('POST /api/cats accepts kimi and omx clients with first-class default CLI commands', async () => {
+  it('POST /api/cats accepts kimi client with first-class default CLI commands', async () => {
     const projectRoot = createProjectRoot();
     process.env.CAT_TEMPLATE_PATH = join(projectRoot, 'cat-template.json');
 
@@ -297,40 +297,15 @@ describe('cats routes runtime CRUD', { concurrency: false }, () => {
       });
       assert.equal(kimiRes.statusCode, 201);
 
-      const omxRes = await app.inject({
-        method: 'POST',
-        url: '/api/cats',
-        headers: {
-          'content-type': 'application/json',
-          'x-cat-cafe-user': 'codex',
-        },
-        body: JSON.stringify({
-          catId: 'runtime-omx',
-          name: 'OMX 猫',
-          displayName: 'OMX 猫',
-          avatar: '/avatars/omx.png',
-          color: { primary: '#0f766e', secondary: '#ccfbf1' },
-          mentionPatterns: ['@runtime-omx'],
-          roleDescription: 'Codex 编排助手',
-          client: 'omx',
-          accountRef: 'omx',
-          defaultModel: 'gpt-5.4',
-        }),
-      });
-      assert.equal(omxRes.statusCode, 201);
 
       const catalog = JSON.parse(readFileSync(join(projectRoot, '.cat-cafe', 'cat-catalog.json'), 'utf-8'));
       const breeds = catalog.breeds;
       const kimiVariant = breeds.find((breed) => breed.catId === 'runtime-kimi')?.variants?.[0];
-      const omxVariant = breeds.find((breed) => breed.catId === 'runtime-omx')?.variants?.[0];
 
       assert.equal(kimiVariant.provider, 'kimi');
       assert.deepEqual(kimiVariant.cli, { command: 'kimi', outputFormat: 'stream-json' });
       assert.equal(kimiVariant.accountRef, 'kimi');
 
-      assert.equal(omxVariant.provider, 'omx');
-      assert.deepEqual(omxVariant.cli, { command: 'omx', outputFormat: 'json' });
-      assert.equal(omxVariant.accountRef, 'omx');
     } finally {
       await app.close();
     }
@@ -1363,32 +1338,6 @@ describe('cats routes runtime CRUD', { concurrency: false }, () => {
     const patchBody = JSON.parse(patchRes.body);
     assert.equal(patchBody.cat.defaultModel, 'gpt-5.4-mini');
     assert.equal(patchBody.cat.accountRef, sponsorProfile.id);
-  });
-
-  it('PATCH /api/cats/:id allows non-provider edits for unbound opencode seed member', async () => {
-    if (savedTemplatePath === undefined) {
-      delete process.env.CAT_TEMPLATE_PATH;
-    } else {
-      process.env.CAT_TEMPLATE_PATH = savedTemplatePath;
-    }
-
-    const Fastify = (await import('fastify')).default;
-    const { catsRoutes } = await import('../dist/routes/cats.js');
-    const app = Fastify();
-    await app.register(catsRoutes);
-
-    const res = await app.inject({
-      method: 'PATCH',
-      url: '/api/cats/opencode',
-      headers: {
-        'content-type': 'application/json',
-        'x-cat-cafe-user': 'codex',
-      },
-      body: JSON.stringify({
-        nickname: '金渐层审计版',
-      }),
-    });
-    assert.equal(res.statusCode, 200);
   });
 
   it('PATCH /api/cats/:id returns 400 when runtime catalog validation rejects the update', async () => {

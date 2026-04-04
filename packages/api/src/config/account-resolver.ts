@@ -41,8 +41,6 @@ export function resolveBuiltinClientForProvider(provider: CatProvider): BuiltinA
     case 'dare':
     case 'opencode':
       return provider;
-    case 'omx':
-      return 'openai';
     default:
       return null;
   }
@@ -103,7 +101,6 @@ const BUILTIN_ACCOUNT_MAP: Record<string, { client: BuiltinAccountClient; protoc
   builtin_google: { client: 'google', protocol: 'google' },
   kimi: { client: 'kimi', protocol: 'kimi' },
   builtin_kimi: { client: 'kimi', protocol: 'kimi' },
-  omx: { client: 'openai', protocol: 'openai' },
   dare: { client: 'dare', protocol: 'openai' },
   builtin_dare: { client: 'dare', protocol: 'openai' },
   opencode: { client: 'opencode', protocol: 'anthropic' },
@@ -227,8 +224,6 @@ function expectedProtocolForProvider(provider: CatProvider): AccountProtocol | n
       return 'google';
     case 'kimi':
       return 'kimi';
-    case 'omx':
-      return 'openai';
     case 'dare':
       return 'openai';
     case 'opencode':

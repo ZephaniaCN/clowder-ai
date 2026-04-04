@@ -719,7 +719,6 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
       openai: 'openai',
       google: 'google',
       kimi: 'kimi',
-      omx: 'openai',
       dare: 'openai',
     };
     const effectiveProtocol =

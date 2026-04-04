@@ -2,7 +2,7 @@ import type { CatData } from '@/hooks/useCatData';
 import type { BuiltinAccountClient, ProfileItem } from './hub-provider-profiles.types';
 import type { CatStrategyEntry, StrategyType } from './hub-strategy-types';
 
-export type ClientValue = 'anthropic' | 'openai' | 'google' | 'kimi' | 'omx' | 'dare' | 'opencode' | 'antigravity';
+export type ClientValue = 'anthropic' | 'openai' | 'google' | 'kimi' | 'dare' | 'opencode' | 'antigravity';
 export type SessionChainValue = 'true' | 'false';
 export type CodexSandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access';
 export type CodexApprovalPolicy = 'untrusted' | 'on-failure' | 'on-request' | 'never';
@@ -63,7 +63,6 @@ export const CLIENT_OPTIONS: Array<{ value: ClientValue; label: string }> = [
   { value: 'openai', label: 'Codex' },
   { value: 'google', label: 'Gemini' },
   { value: 'kimi', label: 'Kimi' },
-  { value: 'omx', label: 'OMX' },
   { value: 'dare', label: 'Dare' },
   { value: 'opencode', label: 'OpenCode' },
   { value: 'antigravity', label: 'Antigravity' },
