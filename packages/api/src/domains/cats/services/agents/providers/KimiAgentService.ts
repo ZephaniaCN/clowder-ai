@@ -132,6 +132,7 @@ function buildInlineApiKeyConfig(model: string, callbackEnv?: Record<string, str
   const apiKey = callbackEnv?.CAT_CAFE_KIMI_API_KEY;
   if (!apiKey) return null;
   const baseUrl = callbackEnv?.CAT_CAFE_KIMI_BASE_URL || DEFAULT_KIMI_BASE_URL;
+  const configuredModelName = model.trim();
   return JSON.stringify({
     providers: {
       'cat-cafe-kimi': {
@@ -141,13 +142,13 @@ function buildInlineApiKeyConfig(model: string, callbackEnv?: Record<string, str
       },
     },
     models: {
-      'cat-cafe-kimi-model': {
+      [configuredModelName]: {
         provider: 'cat-cafe-kimi',
-        model,
+        model: configuredModelName,
         max_context_size: 262144,
       },
     },
-    default_model: 'cat-cafe-kimi-model',
+    default_model: configuredModelName,
   });
 }
 

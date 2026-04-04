@@ -202,6 +202,42 @@ test('api-key mode passes config file path instead of embedding secrets in argv'
   assert.ok(!joined.includes('"api_key"'));
 });
 
+test('api-key mode writes a config whose default model matches the CLI --model value', async () => {
+  const shareDir = mkdtempSync(join(tmpdir(), 'kimi-share-config-shape-'));
+  const proc = createMockProcess();
+  const spawnFn = createMockSpawnFn(proc);
+  const service = new KimiAgentService({ spawnFn, model: 'kimi-k2.5' });
+
+  try {
+    const promise = collect(
+      service.invoke('Hello', {
+        callbackEnv: {
+          CAT_CAFE_KIMI_API_KEY: 'sk-kimi-secret',
+          CAT_CAFE_KIMI_BASE_URL: 'https://api.moonshot.ai/v1',
+          KIMI_SHARE_DIR: shareDir,
+        },
+      }),
+    );
+    const args = spawnFn.mock.calls[0].arguments[1];
+    const modelFlagIndex = args.indexOf('--model');
+    const configFlagIndex = args.indexOf('--config-file');
+    assert.ok(modelFlagIndex >= 0);
+    assert.ok(configFlagIndex >= 0);
+
+    const cliModel = args[modelFlagIndex + 1];
+    const configPath = args[configFlagIndex + 1];
+    const config = JSON.parse(readFileSync(configPath, 'utf8'));
+    assert.equal(config.default_model, cliModel);
+    assert.ok(config.models[cliModel]);
+    assert.equal(config.models[cliModel].model, cliModel);
+
+    emitKimiEvents(proc, [{ role: 'assistant', content: 'ok' }]);
+    await promise;
+  } finally {
+    rmSync(shareDir, { recursive: true, force: true });
+  }
+});
+
 test('injects cat-cafe MCP config file when callback env is present', async () => {
   const shareDir = mkdtempSync(join(tmpdir(), 'kimi-share-mcp-'));
   const projectDir = mkdtempSync(join(tmpdir(), 'kimi-project-mcp-'));
