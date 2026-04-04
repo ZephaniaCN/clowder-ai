@@ -161,7 +161,7 @@ export function resolveForClient(
     return accountToRuntimeProfile(matches[0][0], matches[0][1]);
   }
 
-  if (preferredAccountRef) {
+  if (matches.length === 0 && preferredAccountRef) {
     const builtin = BUILTIN_ACCOUNT_MAP[preferredAccountRef];
     if (builtin && builtin.protocol === protocol) {
       return {
