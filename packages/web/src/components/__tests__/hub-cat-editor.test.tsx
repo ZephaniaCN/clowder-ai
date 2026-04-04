@@ -16,12 +16,15 @@ vi.mock('@/components/useConfirm', () => ({
 import { HubCatEditor } from '@/components/HubCatEditor';
 import {
   buildCatPayload,
+  CLIENT_OPTIONS,
   DEFAULT_ANTIGRAVITY_COMMAND_ARGS,
+  builtinAccountIdForClient,
   filterProfiles,
   type HubCatEditorFormState,
   splitCommandArgs,
   validateModelFormatForClient,
 } from '@/components/hub-cat-editor.model';
+import { defaultMcpSupportForClient, protocolForClient } from '@/components/hub-cat-editor.protocols';
 import type { ProfileItem } from '@/components/hub-provider-profiles.types';
 
 const mockApiFetch = vi.mocked(apiFetch);
@@ -764,6 +767,159 @@ describe('HubCatEditor', () => {
     expect(patchCall).toBeTruthy();
     const payload = JSON.parse(String(patchCall?.[1]?.body));
     expect(payload.defaultModel).toBe('gpt-5.3-codex-spark');
+  });
+
+  it('exposes Kimi in client options with expected protocol/account behavior', () => {
+    expect(CLIENT_OPTIONS.some((option) => option.value === 'kimi' && option.label === 'Kimi')).toBe(true);
+
+    expect(protocolForClient('kimi')).toBe('kimi');
+
+    expect(defaultMcpSupportForClient('kimi')).toBe(true);
+
+    expect(builtinAccountIdForClient('kimi')).toBe('kimi');
+  });
+
+  it('lets Kimi reuse builtin and API-key profiles', () => {
+    const profiles: ProfileItem[] = [
+      {
+        id: 'kimi',
+        provider: 'kimi',
+        displayName: 'Kimi (OAuth)',
+        name: 'Kimi (OAuth)',
+        authType: 'oauth',
+        protocol: 'kimi',
+        kind: 'builtin',
+        builtin: true,
+        mode: 'subscription',
+        client: 'kimi',
+        models: ['kimi-k2.5'],
+        hasApiKey: false,
+        createdAt: '2026-03-18T00:00:00.000Z',
+        updatedAt: '2026-03-18T00:00:00.000Z',
+      },
+      {
+        id: 'moonshot-sponsor',
+        provider: 'moonshot-sponsor',
+        displayName: 'Moonshot Sponsor',
+        name: 'Moonshot Sponsor',
+        authType: 'api_key',
+        protocol: 'kimi',
+        kind: 'api_key',
+        builtin: false,
+        mode: 'api_key',
+        models: ['kimi-k2.5'],
+        hasApiKey: true,
+        createdAt: '2026-03-18T00:00:00.000Z',
+        updatedAt: '2026-03-18T00:00:00.000Z',
+      },
+      {
+        id: 'codex-sponsor',
+        provider: 'codex-sponsor',
+        displayName: 'Codex Sponsor',
+        name: 'Codex Sponsor',
+        authType: 'api_key',
+        protocol: 'openai',
+        kind: 'api_key',
+        builtin: false,
+        mode: 'api_key',
+        models: ['gpt-5.4'],
+        hasApiKey: true,
+        createdAt: '2026-03-18T00:00:00.000Z',
+        updatedAt: '2026-03-18T00:00:00.000Z',
+      },
+    ];
+
+    expect(filterProfiles('kimi', profiles).map((profile) => profile.id)).toEqual(['kimi', 'moonshot-sponsor']);
+  });
+
+  it('switches a Kimi cat to the selected API profile model when builtin-only model would be invalid', async () => {
+    const existingCat = {
+      id: 'kimi',
+      name: '金吉拉',
+      displayName: '金吉拉',
+      provider: 'kimi',
+      providerProfileId: 'kimi',
+      accountRef: 'kimi',
+      defaultModel: 'kimi-code/kimi-for-coding',
+      color: { primary: '#7C3AED', secondary: '#EDE9FE' },
+      mentionPatterns: ['@kimi'],
+      avatar: '/avatars/kimi.png',
+      roleDescription: '中文助手',
+      source: 'runtime',
+    } as CatData;
+
+    mockApiFetch.mockImplementation((path: string, init?: RequestInit) => {
+      if (path === '/api/provider-profiles') {
+        return Promise.resolve(
+          jsonResponse({
+            projectPath: '/tmp/project',
+            activeProfileId: 'kimi',
+            providers: [
+              {
+                id: 'kimi',
+                provider: 'kimi',
+                displayName: 'Kimi (OAuth)',
+                name: 'Kimi (OAuth)',
+                authType: 'oauth',
+                protocol: 'kimi',
+                builtin: true,
+                mode: 'subscription',
+                client: 'kimi',
+                models: ['kimi-code/kimi-for-coding'],
+                hasApiKey: false,
+                createdAt: '2026-03-18T00:00:00.000Z',
+                updatedAt: '2026-03-18T00:00:00.000Z',
+              },
+              {
+                id: 'moonshot-sponsor',
+                provider: 'moonshot-sponsor',
+                displayName: 'Moonshot Sponsor',
+                name: 'Moonshot Sponsor',
+                authType: 'api_key',
+                protocol: 'kimi',
+                builtin: false,
+                mode: 'api_key',
+                models: ['kimi-k2.5'],
+                hasApiKey: true,
+                createdAt: '2026-03-18T00:00:00.000Z',
+                updatedAt: '2026-03-18T00:00:00.000Z',
+              },
+            ],
+          }),
+        );
+      }
+      if (path === '/api/config/session-strategy') {
+        return Promise.resolve(jsonResponse({ cats: [] }));
+      }
+      if (path === '/api/cats/kimi' && init?.method === 'PATCH') {
+        return Promise.resolve(jsonResponse({ cat: { id: 'kimi' } }));
+      }
+      throw new Error(`Unexpected apiFetch path: ${path}`);
+    });
+
+    await act(async () => {
+      root.render(React.createElement(HubCatEditor, { open: true, cat: existingCat, onClose: vi.fn(), onSaved: vi.fn() }));
+    });
+    await flushEffects();
+
+    await changeField(queryField(container, 'select[aria-label="认证信息"]'), 'moonshot-sponsor', 'change');
+    await flushEffects();
+
+    expect(queryField<HTMLInputElement>(container, 'input[aria-label="Model"]').value).toBe('kimi-k2.5');
+
+    const saveButton = Array.from(container.querySelectorAll('button')).find((button) => button.textContent === '保存修改');
+    await act(async () => {
+      saveButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    await flushEffects();
+
+    const patchCall = mockApiFetch.mock.calls.find(
+      ([path, req]) => path === '/api/cats/kimi' && req?.method === 'PATCH',
+    );
+    expect(patchCall).toBeTruthy();
+    const payload = JSON.parse(String(patchCall?.[1]?.body));
+    expect(payload.accountRef).toBe('moonshot-sponsor');
+    expect(payload.defaultModel).toBe('kimi-k2.5');
   });
 
   it('keeps unbound cats unbound when opening the editor', async () => {

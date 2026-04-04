@@ -27,10 +27,15 @@ const PROTOCOL_OPTIONS: { value: ApiProtocol; label: string }[] = [
   { value: 'openai-responses', label: 'OpenAI Responses' },
   { value: 'anthropic', label: 'Anthropic 兼容' },
   { value: 'google', label: 'Google 兼容' },
+  { value: 'kimi', label: 'Kimi / Moonshot 兼容' },
 ];
 
 function protocolLabel(protocol: string | undefined): string {
   return PROTOCOL_OPTIONS.find((o) => o.value === protocol)?.label ?? protocol ?? '自动';
+}
+
+function isKimiConfigProfile(profile: ProfileItem): boolean {
+  return !profile.builtin && profile.protocol === 'kimi';
 }
 
 function summaryText(profile: ProfileItem): string | null {
@@ -184,7 +189,7 @@ export function HubProviderProfileItem({ profile, busy, onSave, onDelete }: HubP
             ) : null}
             {!profile.builtin ? (
               <span className="rounded-full bg-[#F3E8FF] px-2.5 py-1 text-[11px] font-semibold text-[#9D7BC7]">
-                api_key
+                API Key
               </span>
             ) : null}
             {!profile.builtin && profile.protocol ? (

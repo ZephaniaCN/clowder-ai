@@ -102,6 +102,23 @@ describe('account-resolver (4b unified runtime resolution)', () => {
     assert.equal(profile, null);
   });
 
+  it('resolveByAccountRef exposes synthetic builtin profile for kimi', async () => {
+    const { resolveByAccountRef, resolveBuiltinClientForProvider } = await import(
+      `../dist/config/account-resolver.js?t=${Date.now()}-2b`
+    );
+    await writeCatalog({});
+
+    const kimi = resolveByAccountRef(projectRoot, 'kimi');
+    assert.ok(kimi);
+    assert.equal(kimi.id, 'kimi');
+    assert.equal(kimi.authType, 'oauth');
+    assert.equal(kimi.kind, 'builtin');
+    assert.equal(kimi.client, 'kimi');
+    assert.equal(kimi.protocol, 'kimi');
+
+    assert.equal(resolveBuiltinClientForProvider('kimi'), 'kimi');
+  });
+
   it('resolveByAccountRef injects apiKey from credentials', async () => {
     const { resolveByAccountRef } = await import(`../dist/config/account-resolver.js?t=${Date.now()}-3`);
     await writeCatalog({

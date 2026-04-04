@@ -10,7 +10,15 @@ import { createCatId } from './ids.js';
 /**
  * AI provider behind a cat
  */
-export type CatProvider = 'anthropic' | 'openai' | 'google' | 'dare' | 'antigravity' | 'opencode' | 'a2a';
+export type CatProvider =
+  | 'anthropic'
+  | 'openai'
+  | 'google'
+  | 'kimi'
+  | 'dare'
+  | 'antigravity'
+  | 'opencode'
+  | 'a2a';
 
 /**
  * Cat status in the system
@@ -137,6 +145,23 @@ export const CAT_CONFIGS: Record<string, CatConfig> = {
     breedId: 'siamese',
     roleDescription: '视觉设计师和创意顾问，擅长 UI/UX 设计和视觉表达',
     personality: '活泼有创意，善于用视觉语言表达想法，喜欢尝试新事物',
+  },
+  kimi: {
+    id: createCatId('kimi'),
+    name: '金吉拉',
+    displayName: '金吉拉',
+    avatar: '/avatars/kimi.png',
+    color: {
+      primary: '#7C3AED',
+      secondary: '#EDE9FE',
+    },
+    mentionPatterns: ['@kimi', '@moonshot', '@月之暗面', '@金吉拉'],
+    provider: 'kimi',
+    defaultModel: 'kimi-code/kimi-for-coding',
+    mcpSupport: true,
+    breedId: 'moonshot',
+    roleDescription: '中文推理与长文本助手，擅长中文表达、总结与资料整理',
+    personality: '稳健细致，擅长长文阅读和中文语境下的结构化表达',
   },
 } as const;
 

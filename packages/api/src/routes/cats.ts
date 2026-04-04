@@ -42,7 +42,7 @@ const cliSchema = z.object({
   defaultArgs: z.array(z.string().min(1)).optional(),
 });
 
-const clientSchema = z.enum(['anthropic', 'openai', 'google', 'dare', 'antigravity', 'opencode']);
+const clientSchema = z.enum(['anthropic', 'openai', 'google', 'kimi', 'dare', 'antigravity', 'opencode']);
 const catIdSchema = z
   .string()
   .min(1)
@@ -176,6 +176,8 @@ function defaultCliForClient(client: CatProvider): { command: string; outputForm
       return { command: 'codex', outputFormat: 'json' };
     case 'google':
       return { command: 'gemini', outputFormat: 'stream-json' };
+    case 'kimi':
+      return { command: 'kimi', outputFormat: 'stream-json' };
     case 'dare':
       return { command: 'dare', outputFormat: 'json' };
     case 'opencode':

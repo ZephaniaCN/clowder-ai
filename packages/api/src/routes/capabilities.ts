@@ -204,6 +204,7 @@ function getDiscoveryPaths(projectRoot: string) {
     claudeConfig: join(projectRoot, '.mcp.json'),
     codexConfig: join(projectRoot, '.codex', 'config.toml'),
     geminiConfig: join(projectRoot, '.gemini', 'settings.json'),
+    kimiConfig: join(projectRoot, '.kimi', 'mcp.json'),
   };
 }
 
@@ -212,6 +213,7 @@ function getCliConfigPaths(projectRoot: string) {
     anthropic: join(projectRoot, '.mcp.json'),
     openai: join(projectRoot, '.codex', 'config.toml'),
     google: join(projectRoot, '.gemini', 'settings.json'),
+    kimi: join(projectRoot, '.kimi', 'mcp.json'),
   };
 }
 
@@ -469,18 +471,27 @@ export const capabilitiesRoutes: FastifyPluginAsync = async (app) => {
     // placeholders for Gemini MCP) are applied to existing environments
     // without requiring a full re-bootstrap.  writeXxxMcpConfig functions
     // are idempotent merge-writers, so repeated calls are safe and cheap.
-    await generateCliConfigs(config, getCliConfigPaths(projectRoot));
+    try {
+      await generateCliConfigs(config, getCliConfigPaths(projectRoot));
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException | undefined)?.code;
+      if (code !== 'EPERM' && code !== 'EACCES') throw error;
+    }
 
     // 2. Discover skills (filesystem scan — separate from MCP)
     // null = scan failed (readdir/read error); [] = directory exists but empty.
     // Use listSkillSubdirs() for provider dirs so stale/broken symlinks do not
     // resurrect deleted skills in the board.
     const projectSkillsDir = join(projectRoot, '.claude', 'skills');
-    const [claudeProjectSkills, claudeUserSkills, codexSkills, geminiSkills] = await Promise.all([
+    const projectKimiSkillsDir = join(projectRoot, '.kimi', 'skills');
+    const [claudeProjectSkills, claudeUserSkills, codexSkills, geminiSkills, projectKimiSkills, userKimiSkills] =
+      await Promise.all([
       listSkillSubdirs(projectSkillsDir),
       listSkillSubdirs(join(home, '.claude', 'skills')),
       listSkillSubdirs(join(home, '.codex', 'skills'), ['.system']),
       listSkillSubdirs(join(home, '.gemini', 'skills')),
+      listSkillSubdirs(projectKimiSkillsDir),
+      listSkillSubdirs(join(home, '.kimi', 'skills')),
     ]);
 
     // F041 bug fix: Also scan cat-cafe-skills/ for project-level skill detection.
@@ -492,16 +503,26 @@ export const capabilitiesRoutes: FastifyPluginAsync = async (app) => {
     const hasProjectCatCafeSkillsDir = existsSync(catCafeSkillsDir);
 
     const allScansOk =
-      claudeProjectSkills !== null && claudeUserSkills !== null && codexSkills !== null && geminiSkills !== null;
+      claudeProjectSkills !== null &&
+      claudeUserSkills !== null &&
+      codexSkills !== null &&
+      geminiSkills !== null &&
+      projectKimiSkills !== null &&
+      userKimiSkills !== null;
 
     // F041 re-open: Track project-level skills for source classification
     // Includes both .claude/skills/ AND cat-cafe-skills/ entries
-    const projectSkillNames = new Set([...(claudeProjectSkills ?? []), ...(catCafeOwnSkills ?? [])]);
+    const projectSkillNames = new Set([
+      ...(claudeProjectSkills ?? []),
+      ...(projectKimiSkills ?? []),
+      ...(catCafeOwnSkills ?? []),
+    ]);
 
     const providerSkills: Record<string, string[]> = {
       anthropic: [...new Set([...(claudeProjectSkills ?? []), ...(claudeUserSkills ?? [])])],
       openai: codexSkills ?? [],
       google: geminiSkills ?? [],
+      kimi: [...new Set([...(projectKimiSkills ?? []), ...(userKimiSkills ?? [])])],
     };
 
     // 3. Sync discovered skills into capabilities.json
@@ -564,6 +585,7 @@ export const capabilitiesRoutes: FastifyPluginAsync = async (app) => {
       claudeConfig: join(home, '.claude', 'mcp.json'),
       codexConfig: join(home, '.codex', 'config.toml'),
       geminiConfig: join(home, '.gemini', 'settings.json'),
+      kimiConfig: join(home, '.kimi', 'mcp.json'),
     };
     const [projectLevelServers, userLevelServers] = await Promise.all([
       discoverExternalMcpServers(projectLevelPaths),
@@ -605,6 +627,7 @@ export const capabilitiesRoutes: FastifyPluginAsync = async (app) => {
       skillDirCandidates.push({ name, dir: join(home, '.claude', 'skills', name) });
       skillDirCandidates.push({ name, dir: join(home, '.codex', 'skills', name) });
       skillDirCandidates.push({ name, dir: join(home, '.gemini', 'skills', name) });
+      skillDirCandidates.push({ name, dir: join(home, '.kimi', 'skills', name) });
     }
 
     const metaResults = await Promise.all(
@@ -725,16 +748,18 @@ export const capabilitiesRoutes: FastifyPluginAsync = async (app) => {
       claude: join(home, '.claude', 'skills'),
       codex: join(home, '.codex', 'skills'),
       gemini: join(home, '.gemini', 'skills'),
+      kimi: join(home, '.kimi', 'skills'),
     };
     await Promise.all(
       catCafeSkillItems.map(async (item) => {
         const expectedTarget = join(mountSkillsSrc, item.id);
-        const [claude, codex, gemini] = await Promise.all([
+        const [claude, codex, gemini, kimi] = await Promise.all([
           isCorrectSymlink(join(providerDirs.claude, item.id), expectedTarget, item.id, mainSkillsSrc),
           isCorrectSymlink(join(providerDirs.codex, item.id), expectedTarget, item.id, mainSkillsSrc),
           isCorrectSymlink(join(providerDirs.gemini, item.id), expectedTarget, item.id, mainSkillsSrc),
+          isCorrectSymlink(join(providerDirs.kimi, item.id), expectedTarget, item.id, mainSkillsSrc),
         ]);
-        item.mounts = { claude, codex, gemini };
+        item.mounts = { claude, codex, gemini, kimi };
       }),
     );
 

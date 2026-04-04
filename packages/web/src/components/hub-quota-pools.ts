@@ -24,6 +24,7 @@ const BUILTIN_CLIENT_LABELS: Record<BuiltinAccountClient, string> = {
   anthropic: 'Claude',
   openai: 'Codex',
   google: 'Gemini',
+  kimi: 'Kimi',
   dare: 'Dare',
   opencode: 'OpenCode',
 };
@@ -32,6 +33,7 @@ const BUILTIN_ACCOUNT_IDS: Record<BuiltinAccountClient, string> = {
   anthropic: 'claude',
   openai: 'codex',
   google: 'gemini',
+  kimi: 'kimi',
   dare: 'dare',
   opencode: 'opencode',
 };
@@ -44,6 +46,8 @@ function builtinDisplayName(client: BuiltinAccountClient): string {
       return 'Codex (OAuth)';
     case 'google':
       return 'Gemini (OAuth)';
+    case 'kimi':
+      return 'Kimi (OAuth)';
     case 'dare':
       return 'Dare (client-auth)';
     case 'opencode':
@@ -67,6 +71,8 @@ function fallbackAccountRef(cat: CatData): string | null {
       return 'codex';
     case 'google':
       return 'gemini';
+    case 'kimi':
+      return 'kimi';
     case 'dare':
       return 'dare';
     case 'opencode':
@@ -95,6 +101,8 @@ function builtinQuotaItems(accountId: string, quota: QuotaResponse | null): Code
       return quota?.codex.usageItems ?? [];
     case 'gemini':
       return quota?.gemini?.usageItems ?? [];
+    case 'kimi':
+      return quota?.kimi?.usageItems ?? [];
     default:
       return [];
   }
@@ -107,6 +115,8 @@ function builtinEmptyText(accountId: string): string {
       return '暂无数据，点击刷新获取';
     case 'gemini':
       return '暂无数据（需 ClaudeBar 推送）';
+    case 'kimi':
+      return '暂无本地 kimi-cli 会话状态';
     case 'dare':
       return 'Dare 不单独上报官方额度，实际额度取决于绑定账号';
     case 'opencode':
@@ -168,7 +178,7 @@ export function buildAccountQuotaGroups(
     {
       id: 'builtin',
       title: '内置账号额度（按账号配置）',
-      description: '固定内置账号包括 Claude / Codex / Gemini / Dare / OpenCode，每个账号下方反向显示绑定成员。',
+      description: '固定内置账号包括 Claude / Codex / Gemini / Kimi / Dare / OpenCode，每个账号下方反向显示绑定成员。',
       pools: builtinPools,
     },
     {

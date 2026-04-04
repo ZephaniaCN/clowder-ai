@@ -11,7 +11,7 @@
  */
 
 import { execFile } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -73,6 +73,15 @@ export interface GeminiQuota {
   lastChecked: string | null;
 }
 
+export interface KimiQuota {
+  platform: 'kimi';
+  usageItems: CodexUsageItem[];
+  error?: string;
+  lastChecked: string | null;
+  status?: 'ok' | 'unavailable';
+  note?: string;
+}
+
 export interface AntigravityQuota {
   platform: 'antigravity';
   usageItems: CodexUsageItem[];
@@ -84,11 +93,12 @@ export interface QuotaResponse {
   claude: ClaudeQuota;
   codex: CodexQuota;
   gemini: GeminiQuota;
+  kimi: KimiQuota;
   antigravity: AntigravityQuota;
   fetchedAt: string;
 }
 
-export type QuotaProbeTargetPlatform = 'claude' | 'codex' | 'antigravity';
+export type QuotaProbeTargetPlatform = 'claude' | 'codex' | 'kimi' | 'antigravity';
 export type QuotaProbeRuntimeStatus = 'ok' | 'error' | 'disabled';
 
 export interface QuotaProbeAction {
@@ -99,7 +109,7 @@ export interface QuotaProbeAction {
 }
 
 export interface QuotaProbeDescriptor {
-  id: 'claude-cli' | 'official-browser' | 'antigravity-placeholder';
+  id: 'claude-cli' | 'official-browser' | 'kimi-cli-session' | 'antigravity-placeholder';
   sourceKind: 'cli' | 'browser' | 'placeholder';
   refreshMode: 'manual' | 'scheduled';
   enabled: boolean;
@@ -132,15 +142,18 @@ export interface QuotaSummaryResponse {
   platforms: {
     codex: QuotaSummaryPlatform;
     claude: QuotaSummaryPlatform;
+    kimi: QuotaSummaryPlatform;
     antigravity: QuotaSummaryPlatform;
   };
   probes: {
     official: Pick<QuotaProbeDescriptor, 'enabled' | 'status' | 'reason'>;
     claudeCli: Pick<QuotaProbeDescriptor, 'enabled' | 'status' | 'reason'>;
+    kimiCli: Pick<QuotaProbeDescriptor, 'enabled' | 'status' | 'reason'>;
   };
   actions: {
     refreshOfficialPath: '/api/quota/refresh/official';
     refreshClaudePath: '/api/quota/refresh/claude';
+    refreshKimiPath: '/api/quota/refresh/kimi';
   };
 }
 
@@ -171,6 +184,16 @@ function createInitialGeminiCache(): GeminiQuota {
   };
 }
 
+function createInitialKimiCache(): KimiQuota {
+  return {
+    platform: 'kimi',
+    usageItems: [],
+    lastChecked: null,
+    status: 'unavailable',
+    note: '官方用量暂不支持自动探测',
+  };
+}
+
 function createInitialAntigravityCache(): AntigravityQuota {
   return {
     platform: 'antigravity',
@@ -182,18 +205,21 @@ function createInitialAntigravityCache(): AntigravityQuota {
 let claudeCache: ClaudeQuota = createInitialClaudeCache();
 let codexCache: CodexQuota = createInitialCodexCache();
 let geminiCache: GeminiQuota = createInitialGeminiCache();
+let kimiCache: KimiQuota = createInitialKimiCache();
 let antigravityCache: AntigravityQuota = createInitialAntigravityCache();
 
 export function resetQuotaCachesForTests(): void {
   claudeCache = createInitialClaudeCache();
   codexCache = createInitialCodexCache();
   geminiCache = createInitialGeminiCache();
+  kimiCache = createInitialKimiCache();
   antigravityCache = createInitialAntigravityCache();
 }
 
 const OFFICIAL_REFRESH_ENABLED_ENV = 'QUOTA_OFFICIAL_REFRESH_ENABLED';
 const CLAUDE_CREDENTIALS_PATH_ENV = 'CLAUDE_CREDENTIALS_PATH';
 const CODEX_CREDENTIALS_PATH_ENV = 'CODEX_CREDENTIALS_PATH';
+const KIMI_SHARE_DIR_ENV = 'KIMI_SHARE_DIR';
 
 function isTruthyFlag(raw: string | undefined): boolean {
   if (!raw) return false;
@@ -261,6 +287,27 @@ export function listQuotaProbeDescriptors(env: NodeJS.ProcessEnv = process.env):
             : 'Enabled. Uses Anthropic/OpenAI OAuth APIs (ClaudeBar-compatible).',
     },
     {
+      id: 'kimi-cli-session',
+      sourceKind: 'cli',
+      refreshMode: 'manual',
+      enabled: kimiCache.status === 'ok',
+      status: kimiCache.error ? 'error' : kimiCache.status === 'ok' ? 'ok' : 'disabled',
+      targets: ['kimi'],
+      actions: [
+        {
+          kind: 'refresh',
+          method: 'POST',
+          path: '/api/quota/refresh/kimi',
+          requiresInteractive: false,
+        },
+      ],
+      reason:
+        kimiCache.error ??
+        (kimiCache.status === 'ok'
+          ? 'Uses local ~/.kimi session state and wire.jsonl status updates.'
+          : (kimiCache.note ?? 'Kimi local session usage not detected yet.')),
+    },
+    {
       id: 'antigravity-placeholder',
       sourceKind: 'placeholder',
       refreshMode: 'manual',
@@ -271,6 +318,157 @@ export function listQuotaProbeDescriptors(env: NodeJS.ProcessEnv = process.env):
       reason: 'Antigravity official probe not implemented yet.',
     },
   ];
+}
+
+interface KimiWireStatusSnapshot {
+  contextUsage: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheReadTokens?: number;
+  cacheCreationTokens?: number;
+  messageId?: string;
+  sourceLabel?: string;
+}
+
+function resolveKimiShareDir(env: NodeJS.ProcessEnv = process.env): string {
+  return env[KIMI_SHARE_DIR_ENV] || join(homedir(), '.kimi');
+}
+
+function resolvePreferredKimiSessionWireFile(shareDir: string, workingDirectory: string = process.cwd()): string | null {
+  const statePath = join(shareDir, 'kimi.json');
+  try {
+    const raw = JSON.parse(readFileSync(statePath, 'utf-8')) as { work_dirs?: Array<Record<string, unknown>> };
+    const workDirs = Array.isArray(raw?.work_dirs) ? raw.work_dirs : [];
+    const target = workingDirectory;
+    const entry = workDirs.find((item) => typeof item.path === 'string' && item.path === target);
+    const sessionId = typeof entry?.last_session_id === 'string' ? entry.last_session_id.trim() : '';
+    if (!sessionId) return null;
+    const sessionsDir = join(shareDir, 'sessions');
+    const roots = readdirSync(sessionsDir, { withFileTypes: true });
+    for (const root of roots) {
+      if (!root.isDirectory()) continue;
+      const wirePath = join(sessionsDir, root.name, sessionId, 'wire.jsonl');
+      try {
+        if (statSync(wirePath).isFile()) return wirePath;
+      } catch {
+        // continue
+      }
+    }
+  } catch {
+    // ignore malformed kimi.json / missing sessions
+  }
+  return null;
+}
+
+function findNewestKimiWireFile(shareDir: string): string | null {
+  const sessionsDir = join(shareDir, 'sessions');
+  try {
+    const roots = readdirSync(sessionsDir, { withFileTypes: true });
+    let newest: { path: string; mtimeMs: number } | null = null;
+    for (const root of roots) {
+      if (!root.isDirectory()) continue;
+      const rootDir = join(sessionsDir, root.name);
+      const children = readdirSync(rootDir, { withFileTypes: true });
+      for (const child of children) {
+        if (!child.isDirectory()) continue;
+        const wirePath = join(rootDir, child.name, 'wire.jsonl');
+        try {
+          const stat = statSync(wirePath);
+          if (!newest || stat.mtimeMs > newest.mtimeMs) newest = { path: wirePath, mtimeMs: stat.mtimeMs };
+        } catch {
+          // ignore missing wire files
+        }
+      }
+    }
+    return newest?.path ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function readLatestKimiWireStatus(wirePath: string): KimiWireStatusSnapshot | null {
+  try {
+    const lines = readFileSync(wirePath, 'utf-8')
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
+    for (let index = lines.length - 1; index >= 0; index -= 1) {
+      const line = lines[index];
+      if (!line) continue;
+      const parsed = JSON.parse(line) as {
+        message?: { type?: string; payload?: Record<string, unknown> };
+      };
+      if (parsed?.message?.type !== 'StatusUpdate') continue;
+      const payload = parsed.message.payload;
+      if (!payload || typeof payload !== 'object') continue;
+      const contextUsage = payload.context_usage;
+      if (typeof contextUsage !== 'number' || !Number.isFinite(contextUsage)) continue;
+      const tokenUsage =
+        payload.token_usage && typeof payload.token_usage === 'object'
+          ? (payload.token_usage as Record<string, unknown>)
+          : undefined;
+      return {
+        contextUsage,
+        inputTokens: typeof tokenUsage?.input_other === 'number' ? tokenUsage.input_other : undefined,
+        outputTokens: typeof tokenUsage?.output === 'number' ? tokenUsage.output : undefined,
+        cacheReadTokens: typeof tokenUsage?.input_cache_read === 'number' ? tokenUsage.input_cache_read : undefined,
+        cacheCreationTokens:
+          typeof tokenUsage?.input_cache_creation === 'number' ? tokenUsage.input_cache_creation : undefined,
+        messageId: typeof payload.message_id === 'string' ? payload.message_id : undefined,
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function refreshKimiQuotaFromLocalState(env: NodeJS.ProcessEnv = process.env): void {
+  const shareDir = resolveKimiShareDir(env);
+  const wirePath = resolvePreferredKimiSessionWireFile(shareDir) ?? findNewestKimiWireFile(shareDir);
+  if (!wirePath) {
+    kimiCache = {
+      ...createInitialKimiCache(),
+      lastChecked: new Date().toISOString(),
+      note: '未发现 Kimi 本地会话状态，暂无法探测上下文/用量。',
+    };
+    return;
+  }
+  const status = readLatestKimiWireStatus(wirePath);
+  if (!status) {
+    kimiCache = {
+      ...createInitialKimiCache(),
+      lastChecked: new Date().toISOString(),
+      note: '最近的 Kimi 会话未包含可解析的 StatusUpdate。',
+    };
+    return;
+  }
+  const usedPercent = normalizePercent(Math.round(status.contextUsage * 10000) / 100);
+  const usageItems: CodexUsageItem[] = [
+    {
+      label: '当前上下文占用',
+      usedPercent,
+      percentKind: 'used',
+      poolId: 'kimi-context',
+      resetsText: status.messageId ? `消息 ${status.messageId}` : '最近 Kimi 会话',
+    },
+  ];
+  if (typeof status.cacheReadTokens === 'number' && status.cacheReadTokens > 0) {
+    usageItems.push({
+      label: '缓存读取命中',
+      usedPercent: 100,
+      percentKind: 'used',
+      poolId: 'kimi-cache',
+      resetsText: `${status.cacheReadTokens} cache tokens`,
+    });
+  }
+  kimiCache = {
+    platform: 'kimi',
+    usageItems,
+    lastChecked: new Date().toISOString(),
+    status: 'ok',
+    note: '来自本地 kimi-cli 会话的上下文/缓存状态，不代表官方账单额度。',
+  };
 }
 
 function normalizePercent(value: number): number {
@@ -433,15 +631,67 @@ function buildAntigravitySummaryPlatform(): QuotaSummaryPlatform {
   };
 }
 
+function buildKimiSummaryPlatform(): QuotaSummaryPlatform {
+  if (kimiCache.error) {
+    return {
+      id: 'kimi',
+      label: '金吉拉 (Kimi)',
+      displayPercent: null,
+      displayKind: null,
+      utilizationPercent: null,
+      status: 'error',
+      note: kimiCache.error,
+      lastChecked: kimiCache.lastChecked,
+    };
+  }
+  if (kimiCache.status === 'unavailable') {
+    return {
+      id: 'kimi',
+      label: '金吉拉 (Kimi)',
+      displayPercent: null,
+      displayKind: null,
+      utilizationPercent: null,
+      status: 'pending',
+      note: kimiCache.note ?? '官方用量暂不支持自动探测',
+      lastChecked: kimiCache.lastChecked,
+    };
+  }
+  const primary = pickPrimaryUsageItem(kimiCache.usageItems);
+  if (!primary) {
+    return {
+      id: 'kimi',
+      label: '金吉拉 (Kimi)',
+      displayPercent: null,
+      displayKind: null,
+      utilizationPercent: null,
+      status: 'pending',
+      note: '暂无 Kimi 额度数据。',
+      lastChecked: kimiCache.lastChecked,
+    };
+  }
+  const utilization = toUtilizationPercent(primary);
+  return {
+    id: 'kimi',
+    label: '金吉拉 (Kimi)',
+    displayPercent: normalizePercent(primary.usedPercent),
+    displayKind: primary.percentKind ?? 'used',
+    utilizationPercent: utilization,
+    status: statusFromUtilization(utilization),
+    note: primary.resetsText ?? primary.resetsAt ?? primary.label,
+    lastChecked: kimiCache.lastChecked,
+  };
+}
+
 export function buildQuotaSummary(env: NodeJS.ProcessEnv = process.env): QuotaSummaryResponse {
   const probes = listQuotaProbeDescriptors(env);
   const officialProbe = probes.find((probe) => probe.id === 'official-browser');
   const claudeCliProbe = probes.find((probe) => probe.id === 'claude-cli');
   const codex = buildCodexSummaryPlatform();
   const claude = buildClaudeSummaryPlatform();
+  const kimi = buildKimiSummaryPlatform();
   const antigravity = buildAntigravitySummaryPlatform();
 
-  const utilizationValues = [codex.utilizationPercent, claude.utilizationPercent].filter(
+  const utilizationValues = [codex.utilizationPercent, claude.utilizationPercent, kimi.utilizationPercent, antigravity.utilizationPercent].filter(
     (value): value is number => typeof value === 'number' && Number.isFinite(value),
   );
   const maxUtilization = utilizationValues.length > 0 ? Math.max(...utilizationValues) : null;
@@ -487,6 +737,7 @@ export function buildQuotaSummary(env: NodeJS.ProcessEnv = process.env): QuotaSu
     platforms: {
       codex,
       claude,
+      kimi,
       antigravity,
     },
     probes: {
@@ -500,10 +751,16 @@ export function buildQuotaSummary(env: NodeJS.ProcessEnv = process.env): QuotaSu
         status: claudeCliProbe?.status ?? 'ok',
         reason: claudeCliProbe?.reason ?? 'claude-cli probe unavailable',
       },
+      kimiCli: {
+        enabled: kimiCache.status === 'ok',
+        status: kimiCache.error ? 'error' : kimiCache.status === 'ok' ? 'ok' : 'disabled',
+        reason: kimiCache.error ?? kimiCache.note ?? 'kimi-cli local probe unavailable',
+      },
     },
     actions: {
       refreshOfficialPath: '/api/quota/refresh/official',
       refreshClaudePath: '/api/quota/refresh/claude',
+      refreshKimiPath: '/api/quota/refresh/kimi',
     },
   };
 }
@@ -855,6 +1112,7 @@ export async function refreshOfficialQuotaViaOAuth(options: RefreshOAuthOptions)
 
 export async function quotaRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/quota/probes', async () => {
+    refreshKimiQuotaFromLocalState();
     return {
       probes: listQuotaProbeDescriptors(),
       fetchedAt: new Date().toISOString(),
@@ -863,10 +1121,12 @@ export async function quotaRoutes(app: FastifyInstance): Promise<void> {
 
   // GET: return all cached quota
   app.get('/api/quota', async () => {
+    refreshKimiQuotaFromLocalState();
     const response: QuotaResponse = {
       claude: claudeCache,
       codex: codexCache,
       gemini: geminiCache,
+      kimi: kimiCache,
       antigravity: antigravityCache,
       fetchedAt: new Date().toISOString(),
     };
@@ -875,7 +1135,14 @@ export async function quotaRoutes(app: FastifyInstance): Promise<void> {
 
   // GET: compact summary for menu bar / widget clients
   app.get('/api/quota/summary', async () => {
+    refreshKimiQuotaFromLocalState();
     return buildQuotaSummary();
+  });
+
+  // POST: refresh Kimi quota from local CLI session state
+  app.post('/api/quota/refresh/kimi', async () => {
+    refreshKimiQuotaFromLocalState();
+    return { kimi: kimiCache };
   });
 
   // POST: refresh Claude quota via ccusage CLI

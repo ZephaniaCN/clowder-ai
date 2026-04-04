@@ -35,12 +35,14 @@ vi.mock('@/hooks/useCatData', () => ({
     cats: [
       { id: 'opus', displayName: '布偶猫', color: { primary: '#7C3AED', secondary: '#EDE9FE' } },
       { id: 'codex', displayName: '缅因猫', color: { primary: '#059669', secondary: '#D1FAE5' } },
+      { id: 'kimi', displayName: '金吉拉', color: { primary: '#7C3AED', secondary: '#EDE9FE' } },
     ],
     isLoading: false,
     getCatById: (id: string) => {
       const map: Record<string, unknown> = {
         opus: { id: 'opus', displayName: '布偶猫' },
         codex: { id: 'codex', displayName: '缅因猫' },
+        kimi: { id: 'kimi', displayName: '金吉拉' },
       };
       return map[id];
     },
@@ -225,6 +227,16 @@ describe('F24: SessionChainPanel', () => {
     renderPanel('thread-1');
     await flushFetch();
     expect(container.textContent).toContain('sealing');
+  });
+
+  it('renders kimi family badge colors for active sessions', async () => {
+    mockSessionsResponse([
+      { id: 'kimi_s1', catId: 'kimi', seq: 0, status: 'active', messageCount: 2, createdAt: Date.now() },
+    ]);
+    renderPanel('thread-1');
+    await flushFetch();
+    const html = container.innerHTML;
+    expect(html).toContain('border-kimi-primary/40');
   });
 
   it('shows post-compact safety alert when sessionSealed is true', async () => {

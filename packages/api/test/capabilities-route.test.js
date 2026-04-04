@@ -519,6 +519,30 @@ describe('GET /api/capabilities (Fastify)', () => {
     await app.close();
   });
 
+  it('includes Kimi mount state for cat-cafe skills in the board payload', async () => {
+    const Fastify = (await import('fastify')).default;
+    const { capabilitiesRoutes } = await import('../dist/routes/capabilities.js');
+
+    const app = Fastify();
+    await app.register(capabilitiesRoutes);
+    await app.ready();
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/capabilities',
+      headers: AUTH_HEADERS,
+    });
+
+    assert.equal(res.statusCode, 200);
+    const body = res.json();
+
+    const catCafeSkill = (body.items ?? []).find((item) => item.type === 'skill' && item.source === 'cat-cafe' && item.mounts);
+    assert.ok(catCafeSkill, 'expected at least one cat-cafe skill with mount data');
+    assert.equal(typeof catCafeSkill.mounts.kimi, 'boolean');
+
+    await app.close();
+  });
+
   it('does not treat cat-cafe-skills/refs as a skill', async () => {
     const Fastify = (await import('fastify')).default;
     const { capabilitiesRoutes } = await import('../dist/routes/capabilities.js');
