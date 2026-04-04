@@ -153,6 +153,7 @@ export interface QuotaSummaryResponse {
   actions: {
     refreshOfficialPath: '/api/quota/refresh/official';
     refreshClaudePath: '/api/quota/refresh/claude';
+    refreshKimiPath: '/api/quota/refresh/kimi';
   };
 }
 
@@ -292,11 +293,18 @@ export function listQuotaProbeDescriptors(env: NodeJS.ProcessEnv = process.env):
       enabled: kimiCache.status === 'ok',
       status: kimiCache.error ? 'error' : kimiCache.status === 'ok' ? 'ok' : 'disabled',
       targets: ['kimi'],
-      actions: [],
+      actions: [
+        {
+          kind: 'refresh',
+          method: 'POST',
+          path: '/api/quota/refresh/kimi',
+          requiresInteractive: false,
+        },
+      ],
       reason:
         kimiCache.error ??
         (kimiCache.status === 'ok'
-          ? 'Uses local ~/.kimi/sessions wire.jsonl status updates.'
+          ? 'Uses local ~/.kimi session state and wire.jsonl status updates.'
           : (kimiCache.note ?? 'Kimi local session usage not detected yet.')),
     },
     {
@@ -319,10 +327,37 @@ interface KimiWireStatusSnapshot {
   cacheReadTokens?: number;
   cacheCreationTokens?: number;
   messageId?: string;
+  sourceLabel?: string;
 }
 
 function resolveKimiShareDir(env: NodeJS.ProcessEnv = process.env): string {
   return env[KIMI_SHARE_DIR_ENV] || join(homedir(), '.kimi');
+}
+
+function resolvePreferredKimiSessionWireFile(shareDir: string, workingDirectory: string = process.cwd()): string | null {
+  const statePath = join(shareDir, 'kimi.json');
+  try {
+    const raw = JSON.parse(readFileSync(statePath, 'utf-8')) as { work_dirs?: Array<Record<string, unknown>> };
+    const workDirs = Array.isArray(raw?.work_dirs) ? raw.work_dirs : [];
+    const target = workingDirectory;
+    const entry = workDirs.find((item) => typeof item.path === 'string' && item.path === target);
+    const sessionId = typeof entry?.last_session_id === 'string' ? entry.last_session_id.trim() : '';
+    if (!sessionId) return null;
+    const sessionsDir = join(shareDir, 'sessions');
+    const roots = readdirSync(sessionsDir, { withFileTypes: true });
+    for (const root of roots) {
+      if (!root.isDirectory()) continue;
+      const wirePath = join(sessionsDir, root.name, sessionId, 'wire.jsonl');
+      try {
+        if (statSync(wirePath).isFile()) return wirePath;
+      } catch {
+        // continue
+      }
+    }
+  } catch {
+    // ignore malformed kimi.json / missing sessions
+  }
+  return null;
 }
 
 function findNewestKimiWireFile(shareDir: string): string | null {
@@ -390,7 +425,7 @@ function readLatestKimiWireStatus(wirePath: string): KimiWireStatusSnapshot | nu
 
 function refreshKimiQuotaFromLocalState(env: NodeJS.ProcessEnv = process.env): void {
   const shareDir = resolveKimiShareDir(env);
-  const wirePath = findNewestKimiWireFile(shareDir);
+  const wirePath = resolvePreferredKimiSessionWireFile(shareDir) ?? findNewestKimiWireFile(shareDir);
   if (!wirePath) {
     kimiCache = {
       ...createInitialKimiCache(),
@@ -656,7 +691,7 @@ export function buildQuotaSummary(env: NodeJS.ProcessEnv = process.env): QuotaSu
   const kimi = buildKimiSummaryPlatform();
   const antigravity = buildAntigravitySummaryPlatform();
 
-  const utilizationValues = [codex.utilizationPercent, claude.utilizationPercent].filter(
+  const utilizationValues = [codex.utilizationPercent, claude.utilizationPercent, kimi.utilizationPercent, antigravity.utilizationPercent].filter(
     (value): value is number => typeof value === 'number' && Number.isFinite(value),
   );
   const maxUtilization = utilizationValues.length > 0 ? Math.max(...utilizationValues) : null;
@@ -725,6 +760,7 @@ export function buildQuotaSummary(env: NodeJS.ProcessEnv = process.env): QuotaSu
     actions: {
       refreshOfficialPath: '/api/quota/refresh/official',
       refreshClaudePath: '/api/quota/refresh/claude',
+      refreshKimiPath: '/api/quota/refresh/kimi',
     },
   };
 }
@@ -1101,6 +1137,12 @@ export async function quotaRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/quota/summary', async () => {
     refreshKimiQuotaFromLocalState();
     return buildQuotaSummary();
+  });
+
+  // POST: refresh Kimi quota from local CLI session state
+  app.post('/api/quota/refresh/kimi', async () => {
+    refreshKimiQuotaFromLocalState();
+    return { kimi: kimiCache };
   });
 
   // POST: refresh Claude quota via ccusage CLI
