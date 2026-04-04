@@ -96,4 +96,14 @@ describe('governance-preflight', () => {
     assert.equal(result.ready, false);
     assert.ok(result.reason?.includes('KIMI.md'));
   });
+
+  it('requires .kimi/skills when preflighting a kimi project', async () => {
+    const service = new GovernanceBootstrapService(catCafeRoot);
+    await service.bootstrap(externalProject, { dryRun: false });
+    await rm(join(externalProject, '.kimi/skills'), { force: true });
+
+    const result = await checkGovernancePreflight(externalProject, catCafeRoot, 'kimi');
+    assert.equal(result.ready, false);
+    assert.ok(result.reason?.includes('.kimi/skills'));
+  });
 });
