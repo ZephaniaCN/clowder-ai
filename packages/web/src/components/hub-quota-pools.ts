@@ -116,7 +116,7 @@ function builtinEmptyText(accountId: string): string {
     case 'gemini':
       return '暂无数据（需 ClaudeBar 推送）';
     case 'kimi':
-      return '暂无本地 kimi-cli 会话状态';
+      return '暂无官方额度数据，需开启官方抓取并配置 KIMI_AUTH_TOKEN';
     case 'dare':
       return 'Dare 不单独上报官方额度，实际额度取决于绑定账号';
     case 'opencode':

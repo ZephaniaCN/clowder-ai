@@ -6,9 +6,6 @@
  */
 
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { describe, it } from 'node:test';
 
 async function buildApp() {
@@ -75,75 +72,14 @@ describe('GET /api/quota', () => {
     }
   });
 
-  it('detects Kimi local session usage from wire.jsonl when available', async () => {
-    const previousShareDir = process.env.KIMI_SHARE_DIR;
-    const shareDir = join(tmpdir(), `kimi-quota-${Date.now()}`);
-    const wireDir = join(shareDir, 'sessions', 'session-a', 'run-a');
-    mkdirSync(wireDir, { recursive: true });
-    writeFileSync(
-      join(wireDir, 'wire.jsonl'),
-      `${JSON.stringify({
-        message: {
-          type: 'StatusUpdate',
-          payload: {
-            context_usage: 0.42,
-            message_id: 'msg-kimi-1',
-            token_usage: { input_other: 1200, output: 88, input_cache_read: 4096, input_cache_creation: 0 },
-          },
-        },
-      })}\n`,
-      'utf8',
-    );
-    process.env.KIMI_SHARE_DIR = shareDir;
+  it('returns Kimi as unavailable before any official refresh', async () => {
     const app = await buildApp();
     try {
       const res = await app.inject({ method: 'GET', url: '/api/quota' });
       const body = res.json();
-      assert.equal(body.kimi.status, 'ok');
-      assert.equal(body.kimi.usageItems[0].label, '当前上下文占用');
-      assert.equal(body.kimi.usageItems[0].usedPercent, 42);
+      assert.equal(body.kimi.status, 'unavailable');
+      assert.deepEqual(body.kimi.usageItems, []);
     } finally {
-      if (previousShareDir != null) process.env.KIMI_SHARE_DIR = previousShareDir;
-      else delete process.env.KIMI_SHARE_DIR;
-      rmSync(shareDir, { recursive: true, force: true });
-      await app.close();
-    }
-  });
-
-  it('prefers the active workdir session from kimi.json over an unrelated newer wire file', async () => {
-    const previousShareDir = process.env.KIMI_SHARE_DIR;
-    const shareDir = join(tmpdir(), `kimi-quota-active-${Date.now()}`);
-    const activeRun = join(shareDir, 'sessions', 'project-a', 'session-active');
-    const unrelatedRun = join(shareDir, 'sessions', 'project-b', 'session-newer');
-    mkdirSync(activeRun, { recursive: true });
-    mkdirSync(unrelatedRun, { recursive: true });
-    writeFileSync(
-      join(activeRun, 'wire.jsonl'),
-      `${JSON.stringify({ message: { type: 'StatusUpdate', payload: { context_usage: 0.31, message_id: 'active-msg' } } })}\n`,
-      'utf8',
-    );
-    writeFileSync(
-      join(unrelatedRun, 'wire.jsonl'),
-      `${JSON.stringify({ message: { type: 'StatusUpdate', payload: { context_usage: 0.88, message_id: 'newer-msg' } } })}\n`,
-      'utf8',
-    );
-    writeFileSync(
-      join(shareDir, 'kimi.json'),
-      JSON.stringify({ work_dirs: [{ path: process.cwd(), last_session_id: 'session-active' }] }),
-      'utf8',
-    );
-    process.env.KIMI_SHARE_DIR = shareDir;
-    const app = await buildApp();
-    try {
-      const res = await app.inject({ method: 'GET', url: '/api/quota' });
-      const body = res.json();
-      assert.equal(body.kimi.status, 'ok');
-      assert.equal(body.kimi.usageItems[0].usedPercent, 31);
-      assert.match(body.kimi.usageItems[0].resetsText ?? '', /active-msg/);
-    } finally {
-      if (previousShareDir != null) process.env.KIMI_SHARE_DIR = previousShareDir;
-      else delete process.env.KIMI_SHARE_DIR;
-      rmSync(shareDir, { recursive: true, force: true });
       await app.close();
     }
   });
@@ -160,12 +96,12 @@ describe('GET /api/quota/probes', () => {
       const body = res.json();
       assert.equal(Array.isArray(body.probes), true);
       const official = body.probes.find((probe) => probe.id === 'official-browser');
-      const kimi = body.probes.find((probe) => probe.id === 'kimi-cli-session');
+      const kimi = body.probes.find((probe) => probe.id === 'kimi-official-web');
       assert.equal(official?.enabled, false);
       assert.equal(official?.status, 'disabled');
       assert.ok(kimi, 'should expose kimi probe');
       assert.deepEqual(kimi?.targets, ['kimi']);
-      assert.deepEqual(official?.targets, ['codex', 'claude']);
+      assert.deepEqual(official?.targets, ['codex', 'claude', 'kimi']);
       assert.equal(official?.actions?.[0]?.path, '/api/quota/refresh/official');
       assert.equal(official?.actions?.[0]?.requiresInteractive, false);
       assert.match(official?.reason ?? '', /disabled by default/i);
@@ -177,12 +113,12 @@ describe('GET /api/quota/probes', () => {
   });
 
 
-  it('exposes a manual refresh action for Kimi local quota', async () => {
+  it('exposes a manual refresh action for Kimi official quota', async () => {
     const app = await buildApp();
     try {
       const res = await app.inject({ method: 'GET', url: '/api/quota/probes' });
       const body = res.json();
-      const kimi = body.probes.find((probe) => probe.id === 'kimi-cli-session');
+      const kimi = body.probes.find((probe) => probe.id === 'kimi-official-web');
       assert.equal(kimi?.actions?.[0]?.path, '/api/quota/refresh/kimi');
       assert.equal(kimi?.actions?.[0]?.requiresInteractive, false);
     } finally {
@@ -256,7 +192,7 @@ describe('GET /api/quota/summary', () => {
       assert.equal(body.platforms.codex.label, '缅因猫 (Codex + GPT-5.2)');
       assert.equal(typeof body.platforms.codex.displayPercent, 'number');
       assert.equal(typeof body.probes.official.status, 'string');
-      assert.equal(typeof body.probes.kimiCli.status, 'string');
+      assert.equal(typeof body.probes.kimiOfficial.status, 'string');
       assert.equal(typeof body.actions.refreshOfficialPath, 'string');
     } finally {
       if (oldEnabled != null) process.env.QUOTA_OFFICIAL_REFRESH_ENABLED = oldEnabled;
@@ -267,20 +203,23 @@ describe('GET /api/quota/summary', () => {
 
 
   it('includes Kimi utilization in summary risk calculations', async () => {
-    const previousShareDir = process.env.KIMI_SHARE_DIR;
-    const shareDir = join(tmpdir(), `kimi-summary-${Date.now()}`);
-    const wireDir = join(shareDir, 'sessions', 'session-a', 'run-a');
-    mkdirSync(wireDir, { recursive: true });
-    writeFileSync(
-      join(wireDir, 'wire.jsonl'),
-      `${JSON.stringify({ message: { type: 'StatusUpdate', payload: { context_usage: 0.97, message_id: 'risk-msg' } } })}\n`,
-      'utf8',
-    );
-    process.env.KIMI_SHARE_DIR = shareDir;
     const oldEnabled = process.env.QUOTA_OFFICIAL_REFRESH_ENABLED;
+    const oldToken = process.env.KIMI_AUTH_TOKEN;
+    const previousFetch = globalThis.fetch;
     process.env.QUOTA_OFFICIAL_REFRESH_ENABLED = '1';
+    process.env.KIMI_AUTH_TOKEN = 'header.payload.signature';
+    globalThis.fetch = async (url) => {
+      if (String(url).includes('kimi.gateway.billing')) {
+        return new Response(JSON.stringify(MOCK_KIMI_USAGE_RESPONSE), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response('{}', { status: 404 });
+    };
     const app = await buildApp();
     try {
+      await app.inject({ method: 'POST', url: '/api/quota/refresh/kimi' });
       const res = await app.inject({ method: 'GET', url: '/api/quota/summary' });
       const body = res.json();
       assert.equal(body.platforms.kimi.status, 'error');
@@ -290,19 +229,15 @@ describe('GET /api/quota/summary', () => {
     } finally {
       if (oldEnabled != null) process.env.QUOTA_OFFICIAL_REFRESH_ENABLED = oldEnabled;
       else delete process.env.QUOTA_OFFICIAL_REFRESH_ENABLED;
-      if (previousShareDir != null) process.env.KIMI_SHARE_DIR = previousShareDir;
-      else delete process.env.KIMI_SHARE_DIR;
-      rmSync(shareDir, { recursive: true, force: true });
+      if (oldToken != null) process.env.KIMI_AUTH_TOKEN = oldToken;
+      else delete process.env.KIMI_AUTH_TOKEN;
+      globalThis.fetch = previousFetch;
       await app.close();
     }
   });
 
   it('flags high risk when utilization crosses threshold', async () => {
     const oldEnabled = process.env.QUOTA_OFFICIAL_REFRESH_ENABLED;
-    const previousShareDir = process.env.KIMI_SHARE_DIR;
-    const shareDir = join(tmpdir(), `kimi-summary-empty-${Date.now()}`);
-    mkdirSync(shareDir, { recursive: true });
-    process.env.KIMI_SHARE_DIR = shareDir;
     process.env.QUOTA_OFFICIAL_REFRESH_ENABLED = '1';
     const app = await buildApp();
     try {
@@ -324,9 +259,6 @@ describe('GET /api/quota/summary', () => {
     } finally {
       if (oldEnabled != null) process.env.QUOTA_OFFICIAL_REFRESH_ENABLED = oldEnabled;
       else delete process.env.QUOTA_OFFICIAL_REFRESH_ENABLED;
-      if (previousShareDir != null) process.env.KIMI_SHARE_DIR = previousShareDir;
-      else delete process.env.KIMI_SHARE_DIR;
-      rmSync(shareDir, { recursive: true, force: true });
       await app.close();
     }
   });
@@ -353,10 +285,6 @@ describe('GET /api/quota/summary', () => {
 
   it('flags warn when official browser probe is disabled', async () => {
     const oldEnabled = process.env.QUOTA_OFFICIAL_REFRESH_ENABLED;
-    const previousShareDir = process.env.KIMI_SHARE_DIR;
-    const shareDir = join(tmpdir(), `kimi-summary-empty-${Date.now()}-warn`);
-    mkdirSync(shareDir, { recursive: true });
-    process.env.KIMI_SHARE_DIR = shareDir;
     delete process.env.QUOTA_OFFICIAL_REFRESH_ENABLED;
     const app = await buildApp();
     try {
@@ -380,9 +308,6 @@ describe('GET /api/quota/summary', () => {
     } finally {
       if (oldEnabled != null) process.env.QUOTA_OFFICIAL_REFRESH_ENABLED = oldEnabled;
       else delete process.env.QUOTA_OFFICIAL_REFRESH_ENABLED;
-      if (previousShareDir != null) process.env.KIMI_SHARE_DIR = previousShareDir;
-      else delete process.env.KIMI_SHARE_DIR;
-      rmSync(shareDir, { recursive: true, force: true });
       await app.close();
     }
   });
@@ -629,28 +554,35 @@ describe('PATCH /api/quota/antigravity', () => {
 
 
 describe('POST /api/quota/refresh/kimi', () => {
-  it('refreshes local Kimi session usage on demand', async () => {
-    const previousShareDir = process.env.KIMI_SHARE_DIR;
-    const shareDir = join(tmpdir(), `kimi-refresh-${Date.now()}`);
-    const wireDir = join(shareDir, 'sessions', 'session-a', 'run-a');
-    mkdirSync(wireDir, { recursive: true });
-    writeFileSync(
-      join(wireDir, 'wire.jsonl'),
-      `${JSON.stringify({ message: { type: 'StatusUpdate', payload: { context_usage: 0.66, message_id: 'refresh-msg' } } })}\n`,
-      'utf8',
-    );
-    process.env.KIMI_SHARE_DIR = shareDir;
+  it('refreshes Kimi official usage on demand', async () => {
+    const oldEnabled = process.env.QUOTA_OFFICIAL_REFRESH_ENABLED;
+    const oldToken = process.env.KIMI_AUTH_TOKEN;
+    const previousFetch = globalThis.fetch;
+    process.env.QUOTA_OFFICIAL_REFRESH_ENABLED = '1';
+    process.env.KIMI_AUTH_TOKEN = 'header.payload.signature';
+    globalThis.fetch = async (url) => {
+      if (String(url).includes('kimi.gateway.billing')) {
+        return new Response(JSON.stringify(MOCK_KIMI_USAGE_RESPONSE), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response('{}', { status: 404 });
+    };
     const app = await buildApp();
     try {
       const res = await app.inject({ method: 'POST', url: '/api/quota/refresh/kimi' });
       assert.equal(res.statusCode, 200);
       const body = res.json();
       assert.equal(body.kimi.status, 'ok');
-      assert.equal(body.kimi.usageItems[0].usedPercent, 66);
+      assert.equal(body.kimi.usageItems[0].label, '每周使用限额');
+      assert.equal(body.kimi.usageItems[0].usedPercent, 97);
     } finally {
-      if (previousShareDir != null) process.env.KIMI_SHARE_DIR = previousShareDir;
-      else delete process.env.KIMI_SHARE_DIR;
-      rmSync(shareDir, { recursive: true, force: true });
+      if (oldEnabled != null) process.env.QUOTA_OFFICIAL_REFRESH_ENABLED = oldEnabled;
+      else delete process.env.QUOTA_OFFICIAL_REFRESH_ENABLED;
+      if (oldToken != null) process.env.KIMI_AUTH_TOKEN = oldToken;
+      else delete process.env.KIMI_AUTH_TOKEN;
+      globalThis.fetch = previousFetch;
       await app.close();
     }
   });
@@ -717,6 +649,31 @@ const MOCK_CODEX_WHAM_RESPONSE = {
     },
   },
   credits_balance: 0,
+};
+
+const MOCK_KIMI_USAGE_RESPONSE = {
+  usages: [
+    {
+      scope: 'FEATURE_CODING',
+      detail: {
+        limit: '1000',
+        used: '970',
+        remaining: '30',
+        resetTime: '2026-03-09T19:10:00Z',
+      },
+      limits: [
+        {
+          window: { duration: 5, timeUnit: 'hour' },
+          detail: {
+            limit: '50',
+            used: '12',
+            remaining: '38',
+            resetTime: '2026-03-05T07:10:00Z',
+          },
+        },
+      ],
+    },
+  ],
 };
 
 describe('Claude OAuth API parser (v3)', () => {
@@ -819,6 +776,20 @@ describe('Codex Wham API parser (v3)', () => {
     const { parseCodexWhamUsageResponse } = await import('../dist/routes/quota.js');
     const items = parseCodexWhamUsageResponse({});
     assert.equal(items.length, 0);
+  });
+});
+
+describe('Kimi official usage parser', () => {
+  it('parses weekly and 5-hour windows from Kimi billing response', async () => {
+    const { parseKimiOfficialUsageResponse } = await import('../dist/routes/quota.js');
+    const items = parseKimiOfficialUsageResponse(MOCK_KIMI_USAGE_RESPONSE);
+    assert.deepEqual(
+      items.map((item) => [item.label, item.usedPercent, item.poolId]),
+      [
+        ['每周使用限额', 97, 'kimi-weekly'],
+        ['5小时使用限额', 24, 'kimi-rate-limit'],
+      ],
+    );
   });
 });
 
@@ -961,6 +932,25 @@ describe('POST /api/quota/refresh/official — v3 OAuth flow', () => {
     assert.ok(result.codex?.items > 0);
   });
 
+  it('fetches Kimi official usage via billing API and updates cache', async () => {
+    const { refreshOfficialQuotaViaOAuth, resetQuotaCachesForTests } = await import('../dist/routes/quota.js');
+    resetQuotaCachesForTests?.();
+    const result = await refreshOfficialQuotaViaOAuth({
+      claudeCredentials: null,
+      codexCredentials: null,
+      kimiAuthToken: 'header.payload.signature',
+      fetchLike: async (url) => {
+        if (String(url).includes('kimi.gateway.billing')) {
+          return new Response(JSON.stringify(MOCK_KIMI_USAGE_RESPONSE), { status: 200 });
+        }
+        return new Response('', { status: 404 });
+      },
+    });
+    assert.ok(result.kimi);
+    assert.ok(result.kimi.items > 0);
+    assert.ok(!result.kimi.error);
+  });
+
   it('skips provider when credentials are null', async () => {
     const { refreshOfficialQuotaViaOAuth, resetQuotaCachesForTests } = await import('../dist/routes/quota.js');
     resetQuotaCachesForTests?.();
@@ -971,15 +961,17 @@ describe('POST /api/quota/refresh/official — v3 OAuth flow', () => {
     });
     assert.equal(result.claude, undefined);
     assert.equal(result.codex, undefined);
+    assert.equal(result.kimi, undefined);
   });
 
   it('reports skipped providers in result', async () => {
     const { refreshOfficialQuotaViaOAuth, resetQuotaCachesForTests } = await import('../dist/routes/quota.js');
     resetQuotaCachesForTests?.();
-    // Only Claude has credentials, Codex should be reported as skipped
+    // Only Claude has credentials; Codex and Kimi should be reported as skipped
     const result = await refreshOfficialQuotaViaOAuth({
       claudeCredentials: { accessToken: 'ok', refreshToken: 'ok' },
       codexCredentials: null,
+      kimiAuthToken: null,
       fetchLike: async (url) => {
         if (String(url).includes('anthropic.com')) {
           return new Response(JSON.stringify(MOCK_CLAUDE_OAUTH_RESPONSE), { status: 200 });
@@ -992,6 +984,7 @@ describe('POST /api/quota/refresh/official — v3 OAuth flow', () => {
     // Result should have a skipped array indicating which providers were skipped
     assert.ok(Array.isArray(result.skipped), 'result should have skipped array');
     assert.ok(result.skipped.includes('codex'), 'codex should be in skipped list');
+    assert.ok(result.skipped.includes('kimi'), 'kimi should be in skipped list');
   });
 
   it('sends form-encoded OAuth refresh request (not JSON)', async () => {
