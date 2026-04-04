@@ -187,6 +187,41 @@ describe('GET /api/quota', () => {
       await app.close();
     }
   });
+
+  it('skips malformed trailing wire lines and keeps scanning older StatusUpdate entries', async () => {
+    const previousShareDir = process.env.KIMI_SHARE_DIR;
+    const shareDir = join(tmpdir(), `kimi-quota-malformed-${Date.now()}`);
+    const activeRun = join(shareDir, 'sessions', 'project-a', 'session-active');
+    mkdirSync(activeRun, { recursive: true });
+    writeFileSync(
+      join(activeRun, 'wire.jsonl'),
+      [
+        JSON.stringify({ message: { type: 'StatusUpdate', payload: { context_usage: 0.44, message_id: 'stable-msg' } } }),
+        '{"message":{"type":"StatusUpdate","payload":',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    writeFileSync(
+      join(shareDir, 'kimi.json'),
+      JSON.stringify({ work_dirs: [{ path: process.cwd(), last_session_id: 'session-active' }] }),
+      'utf8',
+    );
+    process.env.KIMI_SHARE_DIR = shareDir;
+    const app = await buildApp();
+    try {
+      const res = await app.inject({ method: 'GET', url: '/api/quota' });
+      const body = res.json();
+      assert.equal(body.kimi.status, 'ok');
+      assert.equal(body.kimi.usageItems[0].usedPercent, 44);
+      assert.match(body.kimi.usageItems[0].resetsText ?? '', /stable-msg/);
+    } finally {
+      if (previousShareDir != null) process.env.KIMI_SHARE_DIR = previousShareDir;
+      else delete process.env.KIMI_SHARE_DIR;
+      rmSync(shareDir, { recursive: true, force: true });
+      await app.close();
+    }
+  });
 });
 
 describe('GET /api/quota/probes', () => {

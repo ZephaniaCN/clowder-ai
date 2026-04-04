@@ -403,9 +403,16 @@ function findNewestKimiWireFile(shareDir: string): string | null {
 function readLatestKimiWireStatus(wirePath: string): KimiWireStatusSnapshot | null {
   const CHUNK_SIZE = 64 * 1024;
   const parseStatusLine = (line: string): KimiWireStatusSnapshot | null => {
-    const parsed = JSON.parse(line) as {
+    let parsed: {
       message?: { type?: string; payload?: Record<string, unknown> };
     };
+    try {
+      parsed = JSON.parse(line) as {
+        message?: { type?: string; payload?: Record<string, unknown> };
+      };
+    } catch {
+      return null;
+    }
     if (parsed?.message?.type !== 'StatusUpdate') return null;
     const payload = parsed.message.payload;
     if (!payload || typeof payload !== 'object') return null;

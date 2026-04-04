@@ -493,3 +493,41 @@ test('captures usage and session id from kimi stream events when available', asy
   assert.equal(text?.metadata?.usage?.outputTokens, 34);
   assert.equal(text?.metadata?.usage?.totalTokens, 46);
 });
+
+test('normalizes workdir paths when recovering kimi session id from local state', async () => {
+  const shareDir = mkdtempSync(join(tmpdir(), 'kimi-share-normalized-session-'));
+  const proc = createMockProcess();
+  const spawnFn = createMockSpawnFn(proc);
+  const service = new KimiAgentService({ spawnFn, model: 'kimi-code/kimi-for-coding' });
+
+  try {
+    writeFileSync(
+      join(shareDir, 'kimi.json'),
+      JSON.stringify(
+        {
+          work_dirs: [
+            {
+              path: join(process.cwd(), '.'),
+              last_session_id: 'kimi-session-normalized',
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
+
+    const promise = collect(
+      service.invoke('Hello', {
+        callbackEnv: { KIMI_SHARE_DIR: shareDir },
+      }),
+    );
+
+    emitKimiEvents(proc, [{ role: 'assistant', content: 'done' }]);
+    const msgs = await promise;
+    const session = msgs.find((msg) => msg.type === 'session_init');
+    assert.equal(session?.sessionId, 'kimi-session-normalized');
+  } finally {
+    rmSync(shareDir, { recursive: true, force: true });
+  }
+});
