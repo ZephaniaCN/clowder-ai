@@ -1478,7 +1478,6 @@ async function main(): Promise<void> {
         openai: join(root, '.codex', 'config.toml'),
         google: join(root, '.gemini', 'settings.json'),
         kimi: join(root, '.kimi', 'mcp.json'),
-        omx: join(root, '.codex', 'config.toml'),
       },
       { catCafeRepoRoot: root },
     );
