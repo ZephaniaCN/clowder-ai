@@ -57,4 +57,4 @@ created: 2026-02-26
 | F146 | MCP Marketplace Control Plane — 一键接入 + 多生态聚合 | spec | Maine Coon + Ragdoll | internal | [F146](features/F146-mcp-marketplace-control-plane.md) |
 | F147 | i18n — Hub 界面中英文切换 | idea | 待定 | internal | — |
 | F151 | XiaoYi Channel Gateway — 小艺渠道 OpenClaw 模式接入 | spec | Community | community | [F151](features/F151-xiaoyi-channel-gateway.md) |
-| F152 | Unified Project Management — NAPM × Cat Cafe 第一性原理融合 | spec | Ragdoll | internal | [F152](features/F152-unified-project-management.md) |
+| F152 | Unified Project Management — NAPM × Cat Cafe 第一性原理融合 | phase-a-done | Ragdoll | internal | [F152](features/F152-unified-project-management.md) |
