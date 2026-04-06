@@ -10,6 +10,7 @@
 import type { CatColor, CatProvider } from './cat.js';
 import type { CatId } from './ids.js';
 import type { VoiceConfig } from './tts.js';
+import type { ProjectMethodology } from './work-item.js';
 
 /**
  * Per-cat context budget configuration.
@@ -122,10 +123,26 @@ export interface CatFeatures {
      * once/thread/global: 允许直通 self-claim（细粒度行为由路由层定义）
      */
     readonly selfClaimScope?: MissionHubSelfClaimScope;
+    /**
+     * F152 C4: Per-methodology overrides for self-claim scope.
+     * When a work item's methodology matches a key here, use the override
+     * instead of the default selfClaimScope.
+     */
+    readonly selfClaimByMethodology?: Partial<Record<ProjectMethodology, SelfClaimMethodologyOverride>>;
   };
 }
 
 export type MissionHubSelfClaimScope = 'disabled' | 'once' | 'thread' | 'global';
+
+/**
+ * F152 Phase C (C4): Per-methodology self-claim override.
+ * Allows different claim rules per project methodology (e.g. NAPM may require verify).
+ */
+export interface SelfClaimMethodologyOverride {
+  readonly scope: MissionHubSelfClaimScope;
+  /** NAPM-specific: require verify pass before claiming next item. */
+  readonly requireVerified?: boolean;
+}
 
 /**
  * A cat breed — the identity layer (name, avatar, color, role).

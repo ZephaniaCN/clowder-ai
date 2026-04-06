@@ -17,8 +17,10 @@ import type {
   CoCreatorConfig,
   ContextBudget,
   MissionHubSelfClaimScope,
+  ProjectMethodology,
   ReviewPolicy,
   Roster,
+  SelfClaimMethodologyOverride,
 } from '@cat-cafe/shared';
 import { createCatId } from '@cat-cafe/shared';
 import { z } from 'zod';
@@ -135,6 +137,12 @@ export const sessionStrategySchema = z
   })
   .optional();
 
+/** F152 C4: Per-methodology self-claim override */
+const selfClaimMethodologyOverrideSchema = z.object({
+  scope: z.enum(['disabled', 'once', 'thread', 'global']),
+  requireVerified: z.boolean().optional(),
+});
+
 const catFeaturesSchema = z
   .object({
     sessionChain: z.boolean().optional(),
@@ -142,6 +150,9 @@ const catFeaturesSchema = z
     missionHub: z
       .object({
         selfClaimScope: z.enum(['disabled', 'once', 'thread', 'global']).optional(),
+        selfClaimByMethodology: z
+          .record(z.enum(['cat-cafe', 'napm', 'minimal']), selfClaimMethodologyOverrideSchema)
+          .optional(),
       })
       .optional(),
   })
@@ -612,9 +623,23 @@ export function getConfigSessionStrategy(
 /**
  * Get Mission Hub self-claim scope from cat-config.json for a cat.
  * Defaults to 'disabled' when not configured.
+ *
+ * F152 C4: When methodology is provided, checks per-methodology overrides first.
  */
-export function getMissionHubSelfClaimScope(catId: string, config?: CatCafeConfig): MissionHubSelfClaimScope {
-  const cfg = config ?? getCachedConfig();
+export function getMissionHubSelfClaimScope(
+  catId: string,
+  methodologyOrConfig?: ProjectMethodology | CatCafeConfig,
+  config?: CatCafeConfig,
+): MissionHubSelfClaimScope {
+  // Resolve overloaded params: (catId, config?) or (catId, methodology?, config?)
+  let methodology: ProjectMethodology | undefined;
+  let cfg: CatCafeConfig | null;
+  if (methodologyOrConfig && typeof methodologyOrConfig === 'object' && 'breeds' in methodologyOrConfig) {
+    cfg = methodologyOrConfig;
+  } else {
+    methodology = methodologyOrConfig as ProjectMethodology | undefined;
+    cfg = config ?? getCachedConfig();
+  }
   if (!cfg) return DEFAULT_MISSION_HUB_SELF_CLAIM_SCOPE;
 
   if (!_catIdToBreed || _catIdToBreedSource !== cfg) {
@@ -625,7 +650,37 @@ export function getMissionHubSelfClaimScope(catId: string, config?: CatCafeConfi
   const breed = _catIdToBreed.get(catId);
   if (!breed) return DEFAULT_MISSION_HUB_SELF_CLAIM_SCOPE;
 
-  return breed.features?.missionHub?.selfClaimScope ?? DEFAULT_MISSION_HUB_SELF_CLAIM_SCOPE;
+  const hub = breed.features?.missionHub;
+  if (!hub) return DEFAULT_MISSION_HUB_SELF_CLAIM_SCOPE;
+
+  // F152 C4: per-methodology override takes precedence
+  if (methodology && hub.selfClaimByMethodology) {
+    const override = hub.selfClaimByMethodology[methodology];
+    if (override) return override.scope;
+  }
+
+  return hub.selfClaimScope ?? DEFAULT_MISSION_HUB_SELF_CLAIM_SCOPE;
+}
+
+/**
+ * F152 C4: Get full per-methodology self-claim override (scope + requireVerified).
+ * Returns undefined when no methodology-specific override exists.
+ */
+export function getSelfClaimMethodologyOverride(
+  catId: string,
+  methodology: ProjectMethodology,
+  config?: CatCafeConfig,
+): SelfClaimMethodologyOverride | undefined {
+  const cfg = config ?? getCachedConfig();
+  if (!cfg) return undefined;
+
+  if (!_catIdToBreed || _catIdToBreedSource !== cfg) {
+    _catIdToBreed = buildCatIdToBreedIndex(cfg);
+    _catIdToBreedSource = cfg;
+  }
+
+  const breed = _catIdToBreed.get(catId);
+  return breed?.features?.missionHub?.selfClaimByMethodology?.[methodology];
 }
 
 // ── F32-b: Default cat resolution ─────────────────────────────────────

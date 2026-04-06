@@ -3,13 +3,14 @@ import type {
   BacklogItem,
   CatId,
   MissionHubSelfClaimScope,
+  ProjectMethodology,
   ThreadPhase,
   WorkItemRef,
 } from '@cat-cafe/shared';
 import { catIdSchema, catRegistry } from '@cat-cafe/shared';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
-import { getMissionHubSelfClaimScope } from '../config/cat-config-loader.js';
+import { getMissionHubSelfClaimScope, getSelfClaimMethodologyOverride } from '../config/cat-config-loader.js';
 import type { IBacklogStore } from '../domains/cats/services/stores/ports/BacklogStore.js';
 import { BacklogTransitionError } from '../domains/cats/services/stores/ports/BacklogStore.js';
 import { generateSortableId, type IMessageStore } from '../domains/cats/services/stores/ports/MessageStore.js';
@@ -33,7 +34,7 @@ export interface BacklogRoutesOptions {
   backlogDocPath?: string;
   /** F058 Phase G: override path to docs/features/ directory for done-feature import */
   featuresDir?: string;
-  resolveSelfClaimScope?: (catId: CatId) => MissionHubSelfClaimScope;
+  resolveSelfClaimScope?: (catId: CatId, methodology?: ProjectMethodology) => MissionHubSelfClaimScope;
 }
 
 const createBacklogSchema = z.object({
@@ -52,6 +53,8 @@ const suggestClaimSchema = z.object({
   why: z.string().trim().min(1).max(1000),
   plan: z.string().trim().min(1).max(1500),
   requestedPhase: z.enum(['coding', 'research', 'brainstorm']),
+  /** F152 C4: Optional methodology for per-methodology scope override. */
+  methodology: z.enum(['cat-cafe', 'napm', 'minimal']).optional(),
 });
 const selfClaimSchema = suggestClaimSchema;
 
@@ -182,7 +185,8 @@ function isActiveLeaseOwner(item: BacklogItem, catId: CatId, now: number): boole
 
 export const backlogRoutes: FastifyPluginAsync<BacklogRoutesOptions> = async (app, opts) => {
   const { backlogStore, threadStore, messageStore, backlogDocPath } = opts;
-  const resolveSelfClaimScope = opts.resolveSelfClaimScope ?? ((catId: CatId) => getMissionHubSelfClaimScope(catId));
+  const resolveSelfClaimScope = opts.resolveSelfClaimScope ??
+    ((catId: CatId, methodology?: ProjectMethodology) => getMissionHubSelfClaimScope(catId, methodology));
 
   async function dispatchApprovedItem(item: BacklogItem, userId: string, phase: ThreadPhase) {
     // Acquire in-flight dispatch lock to prevent concurrent races (Redis only, 30s TTL)
@@ -510,13 +514,19 @@ export const backlogRoutes: FastifyPluginAsync<BacklogRoutesOptions> = async (ap
       return { error: 'Identity required' };
     }
 
+    // F152 C4: optional methodology filter for per-methodology overrides
+    const query = request.query as Record<string, string | undefined>;
+    const methodology = (['cat-cafe', 'napm', 'minimal'] as const).includes(query.methodology as ProjectMethodology)
+      ? (query.methodology as ProjectMethodology)
+      : undefined;
+
     const ids = catRegistry.getAllIds();
     const scopes: Record<string, MissionHubSelfClaimScope> = {};
     for (const catId of ids) {
-      scopes[catId] = resolveSelfClaimScope(catId as CatId);
+      scopes[catId] = resolveSelfClaimScope(catId as CatId, methodology);
     }
 
-    return { scopes };
+    return { scopes, ...(methodology ? { methodology } : {}) };
   });
 
   app.post<{ Params: { id: string } }>('/api/backlog/items/:id/self-claim', async (request, reply) => {
@@ -533,11 +543,17 @@ export const backlogRoutes: FastifyPluginAsync<BacklogRoutesOptions> = async (ap
     }
 
     const catId = parsed.data.catId as CatId;
-    const selfClaimScope = resolveSelfClaimScope(catId);
+    const methodology = parsed.data.methodology as ProjectMethodology | undefined;
+    const selfClaimScope = resolveSelfClaimScope(catId, methodology);
     if (selfClaimScope === 'disabled') {
       reply.status(403);
       return { error: 'Self-claim is disabled by mission hub policy' };
     }
+
+    // F152 C4: surface requireVerified flag for NAPM-style gated claims
+    const methodologyOverride = methodology
+      ? getSelfClaimMethodologyOverride(catId, methodology)
+      : undefined;
 
     const itemId = request.params.id;
     const existing = await backlogStore.get(itemId, userId);
@@ -552,6 +568,7 @@ export const backlogRoutes: FastifyPluginAsync<BacklogRoutesOptions> = async (ap
         item: existing,
         ...(thread ? { thread } : {}),
         selfClaimScope,
+        ...(methodologyOverride?.requireVerified ? { requireVerified: true } : {}),
       };
     }
 
@@ -621,6 +638,7 @@ export const backlogRoutes: FastifyPluginAsync<BacklogRoutesOptions> = async (ap
         return {
           ...dispatchedResult.payload,
           selfClaimScope,
+          ...(methodologyOverride?.requireVerified ? { requireVerified: true } : {}),
         };
       }
 
