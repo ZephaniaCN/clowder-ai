@@ -14,6 +14,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { type CatId, type ContextHealth, catRegistry, type MessageContent } from '@cat-cafe/shared';
+import { resolveWorkItemRef } from '@cat-cafe/shared/utils';
 import {
   resolveAnthropicRuntimeProfile,
   resolveBuiltinClientForProvider,
@@ -242,7 +243,7 @@ export interface InvocationParams {
  * - Storing the final response in messageStore
  */
 export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationParams): AsyncIterable<AgentMessage> {
-  const { registry, sessionManager, threadStore, apiUrl } = deps;
+  const { registry, sessionManager, threadStore, apiUrl, workflowSopStore } = deps;
   const { catId, service, prompt, userId, threadId, isLastCat, signal: callerSignal } = params;
 
   const { invocationId, callbackToken } = registry.create(
@@ -647,10 +648,19 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
           const { buildMissionPack, formatMissionPackPrompt } = await import(
             '../../../../../config/governance/mission-pack.js'
           );
+          const sop =
+            thread.backlogItemId && workflowSopStore
+              ? await preflightRace(
+                  Promise.resolve(workflowSopStore.get(thread.backlogItemId)),
+                  'workflowSopStore.get:mission',
+                  signal,
+                )
+              : null;
           capturedMissionPack = buildMissionPack({
             title: thread.title ?? undefined,
             phase: thread.phase ?? undefined,
             backlogItemId: thread.backlogItemId ?? undefined,
+            ...(sop ? { workItemRef: resolveWorkItemRef(sop) } : {}),
           });
           missionPrefix = formatMissionPackPrompt(capturedMissionPack);
         }

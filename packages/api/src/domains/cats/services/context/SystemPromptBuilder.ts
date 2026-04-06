@@ -5,7 +5,7 @@
  * 纯函数，无副作用。读取 CAT_CONFIGS 生成身份上下文。
  */
 
-import type { CatConfig, CatId, CompiledPackBlocks } from '@cat-cafe/shared';
+import type { CatConfig, CatId, CompiledPackBlocks, WorkItemRef } from '@cat-cafe/shared';
 import { CAT_CONFIGS, catRegistry } from '@cat-cafe/shared';
 import {
   catHasRole,
@@ -68,6 +68,7 @@ export interface InvocationContext {
     readonly stage: string;
     readonly suggestedSkill: string | null;
     readonly featureId: string;
+    readonly workItemRef?: WorkItemRef;
   };
   /**
    * F091: Active Signal articles in discussion context.
@@ -120,6 +121,12 @@ function getConfig(catId: string): CatConfig | undefined {
   const entry = catRegistry.tryGet(catId);
   if (entry) return entry.config;
   return CAT_CONFIGS[catId];
+}
+
+function formatSopHintLabel(featureId: string, workItemRef?: WorkItemRef): string {
+  if (!workItemRef) return featureId;
+  if (workItemRef.methodology === 'cat-cafe' && workItemRef.kind === 'feature') return featureId;
+  return `${workItemRef.methodology}/${workItemRef.projectId}/${workItemRef.kind}/${workItemRef.id}`;
 }
 
 interface CallableCatEntry {
@@ -569,9 +576,9 @@ export function buildInvocationContext(context: InvocationContext): string {
 
   // F073 P4: SOP stage hint — 告示牌 (bulletin board, not controller)
   if (context.sopStageHint) {
-    const { stage, suggestedSkill, featureId } = context.sopStageHint;
+    const { stage, suggestedSkill, featureId, workItemRef } = context.sopStageHint;
     const skillPart = suggestedSkill ? ` → load skill: ${suggestedSkill}` : '';
-    lines.push(`SOP: ${featureId} stage=${stage}${skillPart}`);
+    lines.push(`SOP: ${formatSopHintLabel(featureId, workItemRef)} stage=${stage}${skillPart}`);
   }
 
   // F092: Voice companion mode — instruct cats to prioritize audio output

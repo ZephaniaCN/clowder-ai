@@ -20,6 +20,21 @@ describe('mission-pack', () => {
     assert.equal(pack.phase, 'unknown');
   });
 
+  it('prefers workItemRef when provided', () => {
+    const pack = buildMissionPack({
+      title: 'Implement adapter',
+      phase: 'implementing',
+      backlogItemId: 'AUTH-001',
+      workItemRef: {
+        methodology: 'napm',
+        projectId: 'ep-demo',
+        kind: 'task',
+        id: 'task-build-adapter',
+      },
+    });
+    assert.equal(pack.workItem, 'napm/ep-demo/task/task-build-adapter');
+  });
+
   it('formats prompt block with all fields', () => {
     const prompt = formatMissionPackPrompt({
       mission: 'Implement OAuth2 login',

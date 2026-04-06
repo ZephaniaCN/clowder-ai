@@ -859,6 +859,30 @@ describe('SystemPromptBuilder', () => {
     assert.ok(ctx.includes('F073'), 'Should contain feature ID');
   });
 
+  test('buildInvocationContext prefers workItemRef label in SOP hint when available', async () => {
+    const { buildInvocationContext } = await import('../dist/domains/cats/services/context/SystemPromptBuilder.js');
+    const ctx = buildInvocationContext({
+      catId: 'opus',
+      mode: 'independent',
+      teammates: [],
+      mcpAvailable: false,
+      sopStageHint: {
+        stage: 'impl',
+        suggestedSkill: 'napm-lifecycle',
+        featureId: 'F152',
+        workItemRef: {
+          methodology: 'napm',
+          projectId: 'ep-demo',
+          kind: 'task',
+          id: 'task-build-adapter',
+        },
+      },
+    });
+    assert.ok(ctx.includes('SOP'), 'Should contain SOP label');
+    assert.ok(ctx.includes('napm/ep-demo/task/task-build-adapter'), 'Should contain work item ref label');
+    assert.ok(ctx.includes('impl'), 'Should contain current stage');
+  });
+
   test('buildInvocationContext omits SOP hint when sopStageHint absent', async () => {
     const { buildInvocationContext } = await import('../dist/domains/cats/services/context/SystemPromptBuilder.js');
     const ctx = buildInvocationContext({

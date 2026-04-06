@@ -4,12 +4,20 @@
  * Builds structured mission context from thread metadata and formats
  * it for system prompt injection when dispatching cats to external projects.
  */
-import type { DispatchMissionPack } from '@cat-cafe/shared';
+import type { DispatchMissionPack, WorkItemRef } from '@cat-cafe/shared';
 
 export interface ThreadContext {
   title?: string | undefined;
   phase?: string | undefined;
   backlogItemId?: string | undefined;
+  workItemRef?: WorkItemRef | undefined;
+}
+
+function formatMissionWorkItem(backlogItemId?: string, workItemRef?: WorkItemRef): string | undefined {
+  if (workItemRef) {
+    return `${workItemRef.methodology}/${workItemRef.projectId}/${workItemRef.kind}/${workItemRef.id}`;
+  }
+  return backlogItemId;
 }
 
 /**
@@ -19,7 +27,7 @@ export interface ThreadContext {
 export function buildMissionPack(thread: ThreadContext): DispatchMissionPack {
   return {
     mission: thread.title ?? 'External project task',
-    workItem: thread.backlogItemId ?? thread.title ?? 'unspecified',
+    workItem: formatMissionWorkItem(thread.backlogItemId, thread.workItemRef) ?? thread.title ?? 'unspecified',
     phase: thread.phase ?? 'unknown',
     doneWhen: [],
     links: [],

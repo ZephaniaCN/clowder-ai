@@ -5,6 +5,7 @@
 
 import type { CatId, RichBlock } from '@cat-cafe/shared';
 import { catRegistry, createCatId, normalizeRichBlock } from '@cat-cafe/shared';
+import { resolveWorkItemRef } from '@cat-cafe/shared/utils';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { resolveFrontendBaseUrl } from '../config/frontend-origin.js';
@@ -867,6 +868,7 @@ export const callbacksRoutes: FastifyPluginAsync<CallbackRoutesOptions> = async 
         if (sop) {
           workflowSop = {
             featureId: sop.featureId,
+            workItemRef: resolveWorkItemRef(sop),
             stage: sop.stage,
             batonHolder: sop.batonHolder,
             nextSkill: sop.nextSkill,

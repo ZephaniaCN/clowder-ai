@@ -12,6 +12,7 @@
 
 import type { CatConfig, CatId } from '@cat-cafe/shared';
 import { CAT_CONFIGS, catRegistry } from '@cat-cafe/shared';
+import { resolveWorkItemRef } from '@cat-cafe/shared/utils';
 import { getCatContextBudget } from '../../../../../config/cat-budgets.js';
 import { getConfigSessionStrategy, isSessionChainEnabled } from '../../../../../config/cat-config-loader.js';
 import { getCatVoice } from '../../../../../config/cat-voices.js';
@@ -106,7 +107,14 @@ export async function* routeSerial(
   // F042: Fetch thread routingPolicy once before loop (threadId doesn't change).
   let routingPolicy: ThreadRoutingPolicyV1 | undefined;
   // F073 P4: SOP stage hint from workflow-sop (告示牌 — info only, cats decide actions)
-  let sopStageHint: { stage: string; suggestedSkill: string | null; featureId: string } | undefined;
+  let sopStageHint:
+    | {
+        stage: string;
+        suggestedSkill: string | null;
+        featureId: string;
+        workItemRef: ReturnType<typeof resolveWorkItemRef>;
+      }
+    | undefined;
   // F092: Voice companion mode
   let voiceMode: boolean | undefined;
   // F087: Bootcamp state for CVO onboarding
@@ -126,6 +134,7 @@ export async function* routeSerial(
               stage: sop.stage,
               suggestedSkill: sop.nextSkill,
               featureId: sop.featureId,
+              workItemRef: resolveWorkItemRef(sop),
             };
           }
         } catch {
