@@ -38,6 +38,33 @@ skills:
     sop_step: null
     merged_from: ["feat-kickoff", "feat-discussion", "feat-completion"]
 
+  # ── NAPM 生命周期 (F152) ──
+  napm-lifecycle:
+    description: >
+      NAPM (Node Agent Project Management) 项目的执行层生命周期管理。
+      Use when: NAPM 项目执行、pm/next.md 队列推进、EVIDENCE.md 证据落盘、NAPM 健康检查。
+      Not for: Feature 立项/Design Gate（用 feat-lifecycle）、代码 Review/Merge（用 merge-gate）。
+      Output: pm/next.md 更新 + progress/*.md + EVIDENCE.md 证据 + Mission Hub 状态同步。
+    triggers:
+      - "napm 项目"
+      - "NAPM lifecycle"
+      - "pm/next"
+      - "pm/backlog"
+      - "EVIDENCE.md"
+      - "Plan Execute Verify Document"
+      - "NAPM 适配"
+      - "methodology: napm"
+    not_for:
+      - "Feature 立项"
+      - "Design Gate"
+      - "代码 review"
+      - "纯 Feature-doc 项目"
+    output: "NAPM execution loop + evidence + Mission Hub sync"
+    next: ["quality-gate"]
+    sop_step: null
+    merged_from: null
+    feature: "F152"
+
   # ── 协作思考 ──
   collaborative-thinking:
     description: >

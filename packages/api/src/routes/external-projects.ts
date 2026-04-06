@@ -4,10 +4,11 @@
 
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { ExternalProject } from '@cat-cafe/shared';
+import type { ExternalProject, ProjectMethodology } from '@cat-cafe/shared';
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import type { IBacklogStore } from '../domains/cats/services/stores/ports/BacklogStore.js';
 import type { ExternalProjectStore } from '../domains/projects/external-project-store.js';
+import { NapmProjectAdapter } from '../domains/projects/napm-project-adapter.js';
 import type { NeedAuditFrameStore } from '../domains/projects/need-audit-frame-store.js';
 import { buildBacklogInputFromFeature, getFeatureTagId, parseActiveFeaturesFromBacklog } from './backlog-doc-import.js';
 
@@ -19,6 +20,7 @@ export interface ExternalProjectRoutesOptions {
 
 export const externalProjectRoutes: FastifyPluginAsync<ExternalProjectRoutesOptions> = async (app, opts) => {
   const { externalProjectStore, needAuditFrameStore, backlogStore } = opts;
+  const validMethodologies: readonly ProjectMethodology[] = ['cat-cafe', 'napm', 'minimal'];
 
   /** Returns userId or sends 401 and returns null */
   function requireUserId(request: FastifyRequest, reply: FastifyReply): string | null {
@@ -50,9 +52,13 @@ export const externalProjectRoutes: FastifyPluginAsync<ExternalProjectRoutesOpti
       description?: string;
       sourcePath?: string;
       backlogPath?: string;
+      methodology?: ProjectMethodology;
     };
     if (!body.name || !body.sourcePath) {
       return reply.status(400).send({ error: 'name and sourcePath are required' });
+    }
+    if (body.methodology && !validMethodologies.includes(body.methodology)) {
+      return reply.status(400).send({ error: `Invalid methodology: ${body.methodology}` });
     }
     try {
       const project = externalProjectStore.create(userId, {
@@ -60,6 +66,7 @@ export const externalProjectRoutes: FastifyPluginAsync<ExternalProjectRoutesOpti
         description: body.description ?? '',
         sourcePath: body.sourcePath,
         ...(body.backlogPath ? { backlogPath: body.backlogPath } : {}),
+        ...(body.methodology ? { methodology: body.methodology } : {}),
       });
       return reply.status(201).send({ project });
     } catch (err: unknown) {
@@ -102,6 +109,11 @@ export const externalProjectRoutes: FastifyPluginAsync<ExternalProjectRoutesOpti
     const { id } = request.params as { id: string };
     const project = requireOwnedProject(id, userId, reply);
     if (!project) return;
+    if (project.methodology === 'napm') {
+      return reply.status(400).send({
+        error: 'NAPM projects must use /api/external-projects/:id/napm/* read endpoints instead of ROADMAP import',
+      });
+    }
 
     const backlogFullPath = join(project.sourcePath, project.backlogPath);
     let markdown: string;
@@ -134,6 +146,51 @@ export const externalProjectRoutes: FastifyPluginAsync<ExternalProjectRoutesOpti
     }
 
     return reply.send({ imported: created, skipped, total: rows.length });
+  });
+
+  app.get('/api/external-projects/:id/napm/overview', async (request, reply) => {
+    const userId = requireUserId(request, reply);
+    if (!userId) return;
+    const { id } = request.params as { id: string };
+    const project = requireOwnedProject(id, userId, reply);
+    if (!project) return;
+    if (project.methodology !== 'napm') {
+      return reply.status(400).send({ error: `Project methodology is ${project.methodology}, expected napm` });
+    }
+
+    const adapter = new NapmProjectAdapter(project.sourcePath, project.id);
+    const overview = await adapter.getOverview();
+    return reply.send({ overview });
+  });
+
+  app.get('/api/external-projects/:id/napm/work-items', async (request, reply) => {
+    const userId = requireUserId(request, reply);
+    if (!userId) return;
+    const { id } = request.params as { id: string };
+    const project = requireOwnedProject(id, userId, reply);
+    if (!project) return;
+    if (project.methodology !== 'napm') {
+      return reply.status(400).send({ error: `Project methodology is ${project.methodology}, expected napm` });
+    }
+
+    const adapter = new NapmProjectAdapter(project.sourcePath, project.id);
+    const items = await adapter.toWorkItems();
+    return reply.send({ items });
+  });
+
+  app.get('/api/external-projects/:id/napm/evidence', async (request, reply) => {
+    const userId = requireUserId(request, reply);
+    if (!userId) return;
+    const { id } = request.params as { id: string };
+    const project = requireOwnedProject(id, userId, reply);
+    if (!project) return;
+    if (project.methodology !== 'napm') {
+      return reply.status(400).send({ error: `Project methodology is ${project.methodology}, expected napm` });
+    }
+
+    const adapter = new NapmProjectAdapter(project.sourcePath, project.id);
+    const evidence = await adapter.readEvidence();
+    return reply.send({ evidence });
   });
 
   // --- Need Audit Frame routes ---

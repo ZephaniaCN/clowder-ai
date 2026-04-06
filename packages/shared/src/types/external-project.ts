@@ -1,3 +1,5 @@
+import type { ProjectMethodology } from './work-item.js';
+
 /**
  * F076: External Project types
  * 跨项目作战面板 — 外部项目实体
@@ -10,6 +12,7 @@ export interface ExternalProject {
   readonly description: string;
   readonly sourcePath: string;
   readonly backlogPath: string;
+  readonly methodology: ProjectMethodology;
   readonly createdAt: number;
   readonly updatedAt: number;
 }
@@ -19,4 +22,5 @@ export interface CreateExternalProjectInput {
   readonly description: string;
   readonly sourcePath: string;
   readonly backlogPath?: string;
+  readonly methodology?: ProjectMethodology;
 }

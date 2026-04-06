@@ -9,6 +9,7 @@ const mockProject: ExternalProject = {
   description: 'Client project',
   sourcePath: '/tmp/sf',
   backlogPath: 'docs/ROADMAP.md',
+  methodology: 'cat-cafe',
   createdAt: 1000,
   updatedAt: 1000,
 };

@@ -1,5 +1,6 @@
 'use client';
 
+import type { ProjectMethodology } from '@cat-cafe/shared';
 import { useState } from 'react';
 import { apiFetch } from '@/utils/api-client';
 
@@ -11,10 +12,24 @@ interface ImportProjectModalProps {
 export function ImportProjectModal({ onClose, onImported }: ImportProjectModalProps) {
   const [name, setName] = useState('');
   const [sourcePath, setSourcePath] = useState('');
+  const [methodology, setMethodology] = useState<ProjectMethodology>('cat-cafe');
   const [backlogPath, setBacklogPath] = useState('docs/ROADMAP.md');
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const handleMethodologyChange = (next: ProjectMethodology) => {
+    setMethodology(next);
+    if (next === 'napm') {
+      setBacklogPath('pm/backlog.md');
+      return;
+    }
+    if (next === 'cat-cafe') {
+      setBacklogPath('docs/ROADMAP.md');
+      return;
+    }
+    setBacklogPath('BACKLOG.md');
+  };
 
   const handleSubmit = async () => {
     if (!name.trim() || !sourcePath.trim()) {
@@ -27,7 +42,13 @@ export function ImportProjectModal({ onClose, onImported }: ImportProjectModalPr
       const res = await apiFetch('/api/external-projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), sourcePath: sourcePath.trim(), backlogPath, description }),
+        body: JSON.stringify({
+          name: name.trim(),
+          sourcePath: sourcePath.trim(),
+          backlogPath,
+          methodology,
+          description,
+        }),
       });
       if (!res.ok) {
         const body = (await res.json()) as { error?: string };
@@ -71,6 +92,19 @@ export function ImportProjectModal({ onClose, onImported }: ImportProjectModalPr
               placeholder="/home/user/studio-flow"
               className="mt-1 w-full rounded-lg border border-[#D8C6AD] bg-cafe-surface px-3 py-2 text-sm text-[#2B2118] focus:border-[#8B6F47] focus:outline-none"
             />
+          </label>
+
+          <label className="block">
+            <span className="text-xs font-medium text-[#6B5D4F]">方法论</span>
+            <select
+              value={methodology}
+              onChange={(e) => handleMethodologyChange(e.target.value as ProjectMethodology)}
+              className="mt-1 w-full rounded-lg border border-[#D8C6AD] bg-cafe-surface px-3 py-2 text-sm text-[#2B2118] focus:border-[#8B6F47] focus:outline-none"
+            >
+              <option value="cat-cafe">cat-cafe</option>
+              <option value="napm">napm</option>
+              <option value="minimal">minimal</option>
+            </select>
           </label>
 
           <label className="block">

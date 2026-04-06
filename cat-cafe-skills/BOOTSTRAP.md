@@ -10,11 +10,16 @@
 feat-lifecycle → Design Gate(设计确认) → writing-plans → worktree → tdd
     → quality-gate → request-review → receive-review
     → merge-gate → feat-lifecycle(完成)
+
+# NAPM 项目执行链 (F152)
+feat-lifecycle(kickoff) → napm-lifecycle(execute) → quality-gate → merge-gate
+    → feat-lifecycle(completion)
 ```
 
 | Skill | 触发场景 | SOP Step |
 |-------|----------|----------|
 | `feat-lifecycle` | 新功能立项/讨论/完成 | — |
+| `napm-lifecycle` | NAPM 项目执行/证据落盘 | — |
 | `collaborative-thinking` | brainstorm/多猫讨论/收敛 | — |
 | `writing-plans` | 写实施计划 | — |
 | `worktree` | 开始写代码（创建隔离环境） | ① |

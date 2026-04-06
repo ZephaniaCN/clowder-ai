@@ -3,18 +3,23 @@
  */
 
 import { resolve } from 'node:path';
-import type { CreateExternalProjectInput, ExternalProject } from '@cat-cafe/shared';
+import type { CreateExternalProjectInput, ExternalProject, ProjectMethodology } from '@cat-cafe/shared';
 import { generateSortableId } from '../cats/services/stores/ports/MessageStore.js';
 
 export class ExternalProjectStore {
   private readonly projects = new Map<string, ExternalProject>();
 
+  private defaultBacklogPath(methodology: ProjectMethodology): string {
+    return methodology === 'napm' ? 'pm/backlog.md' : 'docs/ROADMAP.md';
+  }
+
   create(userId: string, input: CreateExternalProjectInput): ExternalProject {
     if (!input.sourcePath) {
       throw new Error('sourcePath is required');
     }
+    const methodology = input.methodology ?? 'cat-cafe';
     // P2-1: Prevent path traversal — resolved backlogPath must stay within sourcePath
-    const backlogPath = input.backlogPath ?? 'docs/ROADMAP.md';
+    const backlogPath = input.backlogPath ?? this.defaultBacklogPath(methodology);
     const resolvedBacklog = resolve(input.sourcePath, backlogPath);
     const resolvedSource = resolve(input.sourcePath);
     if (!resolvedBacklog.startsWith(`${resolvedSource}/`) && resolvedBacklog !== resolvedSource) {
@@ -28,6 +33,7 @@ export class ExternalProjectStore {
       description: input.description,
       sourcePath: input.sourcePath,
       backlogPath,
+      methodology,
       createdAt: now,
       updatedAt: now,
     };
@@ -52,6 +58,7 @@ export class ExternalProjectStore {
       ...(patch.description !== undefined ? { description: patch.description } : {}),
       ...(patch.sourcePath !== undefined ? { sourcePath: patch.sourcePath } : {}),
       ...(patch.backlogPath !== undefined ? { backlogPath: patch.backlogPath } : {}),
+      ...(patch.methodology !== undefined ? { methodology: patch.methodology } : {}),
       updatedAt: Date.now(),
     };
     this.projects.set(id, updated);

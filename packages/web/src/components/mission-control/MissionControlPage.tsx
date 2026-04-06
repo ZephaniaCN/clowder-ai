@@ -13,6 +13,7 @@ import { ExternalProjectTab } from './ExternalProjectTab';
 import { extractFeatureId } from './FeatureBirdEyePanel';
 import { FeatureRowList } from './FeatureRowList';
 import { ImportProjectModal } from './ImportProjectModal';
+import { NapmProjectTab } from './NapmProjectTab';
 import { QuickCreateForm } from './QuickCreateForm';
 import { SuggestionDrawer } from './SuggestionDrawer';
 import { ThreadSituationPanel } from './ThreadSituationPanel';
@@ -583,7 +584,11 @@ export function MissionControlPage() {
         <div className="min-h-0 flex-1 overflow-auto">
           {activeProject ? (
             <div className="p-6">
-              <ExternalProjectTab project={activeProject} />
+              {activeProject.methodology === 'napm' ? (
+                <NapmProjectTab project={activeProject} />
+              ) : (
+                <ExternalProjectTab project={activeProject} />
+              )}
             </div>
           ) : activeTab === 'features' ? (
             <div className="grid min-h-0 grid-cols-1 gap-4 p-6 xl:grid-cols-[minmax(0,1fr)_340px]">

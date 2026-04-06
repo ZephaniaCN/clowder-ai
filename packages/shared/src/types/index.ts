@@ -411,6 +411,27 @@ export type {
   VoiceStreamEvent,
   VoiceStreamStartEvent,
 } from './tts.js';
+// Unified work item types (F152 NAPM x Mission Hub)
+export type {
+  NapmEvidenceEntry,
+  NapmEvidenceStatus,
+  NapmProjectOverview,
+  NapmProjectState,
+  NapmProjectSummaryCounts,
+  ProjectMethodology,
+  WorkItem,
+  WorkItemEvidenceRef,
+  WorkItemEvidenceType,
+  WorkItemExecutionStage,
+  WorkItemGateState,
+  WorkItemGates,
+  WorkItemKind,
+  WorkItemLifecycleStatus,
+  WorkItemPriority,
+  WorkItemRef,
+  WorkItemSource,
+  WorkItemSourceType,
+} from './work-item.js';
 // Workflow SOP types (F073 告示牌)
 export type {
   CheckStatus,
