@@ -155,7 +155,11 @@ export function WorkflowSopPanel({ backlogItemId }: WorkflowSopPanelProps) {
       {/* Header */}
       <div className="mb-2">
         <h2 className="text-sm font-semibold text-[#2C2118]">SOP 告示牌</h2>
-        <p className="text-[10px] text-[#7B6956]">{sop.featureId}</p>
+        <p className="text-[10px] text-[#7B6956]">
+          {sop.workItemRef && sop.workItemRef.methodology !== 'cat-cafe'
+            ? `${sop.workItemRef.methodology}/${sop.workItemRef.projectId}`
+            : sop.featureId}
+        </p>
       </div>
 
       {/* Stage pills */}

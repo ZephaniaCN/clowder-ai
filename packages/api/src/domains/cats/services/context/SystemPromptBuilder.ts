@@ -67,8 +67,10 @@ export interface InvocationContext {
   sopStageHint?: {
     readonly stage: string;
     readonly suggestedSkill: string | null;
+    /** @deprecated B1b: use workItemRef instead. Kept for backward compat. */
     readonly featureId: string;
-    readonly workItemRef?: WorkItemRef;
+    /** F152 B1b: canonical project reference — always present. */
+    readonly workItemRef: WorkItemRef;
   };
   /**
    * F091: Active Signal articles in discussion context.
@@ -123,9 +125,11 @@ function getConfig(catId: string): CatConfig | undefined {
   return CAT_CONFIGS[catId];
 }
 
-function formatSopHintLabel(featureId: string, workItemRef?: WorkItemRef): string {
-  if (!workItemRef) return featureId;
-  if (workItemRef.methodology === 'cat-cafe' && workItemRef.kind === 'feature') return featureId;
+/** F152 B1b: workItemRef is the canonical source; featureId is a backward-compat fallback. */
+function formatSopHintLabel(workItemRef: WorkItemRef, featureId?: string): string {
+  if (workItemRef.methodology === 'cat-cafe' && workItemRef.kind === 'feature') {
+    return featureId ?? workItemRef.projectId;
+  }
   return `${workItemRef.methodology}/${workItemRef.projectId}/${workItemRef.kind}/${workItemRef.id}`;
 }
 
@@ -578,7 +582,7 @@ export function buildInvocationContext(context: InvocationContext): string {
   if (context.sopStageHint) {
     const { stage, suggestedSkill, featureId, workItemRef } = context.sopStageHint;
     const skillPart = suggestedSkill ? ` → load skill: ${suggestedSkill}` : '';
-    lines.push(`SOP: ${formatSopHintLabel(featureId, workItemRef)} stage=${stage}${skillPart}`);
+    lines.push(`SOP: ${formatSopHintLabel(workItemRef, featureId)} stage=${stage}${skillPart}`);
   }
 
   // F092: Voice companion mode — instruct cats to prioritize audio output

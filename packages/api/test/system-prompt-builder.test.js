@@ -851,6 +851,7 @@ describe('SystemPromptBuilder', () => {
         stage: 'impl',
         suggestedSkill: 'tdd',
         featureId: 'F073',
+        workItemRef: { methodology: 'cat-cafe', projectId: 'f073', kind: 'feature', id: 'bl-001' },
       },
     });
     assert.ok(ctx.includes('SOP'), 'Should contain SOP label');
@@ -905,6 +906,7 @@ describe('SystemPromptBuilder', () => {
         stage: 'review',
         suggestedSkill: null,
         featureId: 'F080',
+        workItemRef: { methodology: 'cat-cafe', projectId: 'f080', kind: 'feature', id: 'bl-002' },
       },
     });
     assert.ok(ctx.includes('SOP'), 'Should contain SOP label');
@@ -928,6 +930,7 @@ describe('SystemPromptBuilder', () => {
         stage: 'quality_gate',
         suggestedSkill: 'quality-gate',
         featureId: 'F073',
+        workItemRef: { methodology: 'cat-cafe', projectId: 'f073', kind: 'feature', id: 'bl-001' },
       },
     });
     assert.ok(prompt.length < 3550, `Prompt with SOP hint is ${prompt.length} chars, expected < 3550`);
@@ -974,6 +977,7 @@ describe('SystemPromptBuilder', () => {
         stage: 'quality_gate',
         suggestedSkill: 'quality-gate',
         featureId: 'F073',
+        workItemRef: { methodology: 'cat-cafe', projectId: 'f073', kind: 'feature', id: 'bl-001' },
       },
       voiceMode: true,
     });
