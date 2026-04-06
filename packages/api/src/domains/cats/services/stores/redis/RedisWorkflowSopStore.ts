@@ -88,9 +88,19 @@ export class RedisWorkflowSopStore implements IWorkflowSopStore {
     const existing = await this.get(backlogItemId);
     const now = Date.now();
 
+    // F152 Phase B: resolve workItemRef via input, existing, or derive from old fields
+    const workItemRef =
+      input.workItemRef ?? existing?.workItemRef ?? {
+        methodology: 'cat-cafe' as const,
+        projectId: featureId.toLowerCase(),
+        kind: 'feature' as const,
+        id: backlogItemId,
+      };
+
     const sop: WorkflowSop = existing
       ? {
           ...existing,
+          workItemRef: input.workItemRef ?? existing.workItemRef ?? workItemRef,
           stage: input.stage ?? existing.stage,
           batonHolder: input.batonHolder ?? existing.batonHolder,
           nextSkill: input.nextSkill !== undefined ? input.nextSkill : existing.nextSkill,
@@ -105,6 +115,7 @@ export class RedisWorkflowSopStore implements IWorkflowSopStore {
       : {
           featureId,
           backlogItemId,
+          workItemRef,
           stage: input.stage ?? 'kickoff',
           batonHolder: input.batonHolder ?? updatedBy,
           nextSkill: input.nextSkill !== undefined ? input.nextSkill : null,

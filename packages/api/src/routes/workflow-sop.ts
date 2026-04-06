@@ -10,6 +10,16 @@ export interface WorkflowSopRoutesOptions {
   backlogStore: IBacklogStore;
 }
 
+// F152 Phase B: optional workItemRef for multi-methodology support
+const workItemRefSchema = z
+  .object({
+    methodology: z.enum(['cat-cafe', 'napm', 'minimal']),
+    projectId: z.string().min(1),
+    kind: z.enum(['feature', 'task', 'slice']),
+    id: z.string().min(1),
+  })
+  .optional();
+
 const updateWorkflowSopSchema = z.object({
   featureId: z.string().min(1),
   stage: z.enum(['kickoff', 'impl', 'quality_gate', 'review', 'merge', 'completion']).optional(),
@@ -31,6 +41,7 @@ const updateWorkflowSopSchema = z.object({
     })
     .optional(),
   expectedVersion: z.number().int().optional(),
+  workItemRef: workItemRefSchema,
 });
 
 export const workflowSopRoutes: FastifyPluginAsync<WorkflowSopRoutesOptions> = async (app, opts) => {
@@ -79,7 +90,7 @@ export const workflowSopRoutes: FastifyPluginAsync<WorkflowSopRoutesOptions> = a
     }
 
     try {
-      const { featureId, ...rest } = parsed.data;
+      const { featureId, workItemRef, ...rest } = parsed.data;
       // Cast needed: Zod output uses `T | undefined` for optionals,
       // but UpdateWorkflowSopInput uses exactOptionalPropertyTypes
       const input = {
@@ -89,6 +100,7 @@ export const workflowSopRoutes: FastifyPluginAsync<WorkflowSopRoutesOptions> = a
         ...(rest.resumeCapsule !== undefined ? { resumeCapsule: rest.resumeCapsule } : {}),
         ...(rest.checks !== undefined ? { checks: rest.checks } : {}),
         ...(rest.expectedVersion !== undefined ? { expectedVersion: rest.expectedVersion } : {}),
+        ...(workItemRef !== undefined ? { workItemRef } : {}),
       } as import('@cat-cafe/shared').UpdateWorkflowSopInput;
       const sop = await workflowSopStore.upsert(request.params.itemId, featureId, input, userId);
       return sop;

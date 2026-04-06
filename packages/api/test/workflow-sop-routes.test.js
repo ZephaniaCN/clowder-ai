@@ -84,9 +84,18 @@ function createInMemoryWorkflowSopStore() {
       }
 
       const now = Date.now();
+      // F152 Phase B: resolve workItemRef (same logic as RedisWorkflowSopStore)
+      const workItemRef =
+        input.workItemRef ?? existing?.workItemRef ?? {
+          methodology: 'cat-cafe',
+          projectId: featureId.toLowerCase(),
+          kind: 'feature',
+          id: backlogItemId,
+        };
       const sop = existing
         ? {
             ...existing,
+            workItemRef: input.workItemRef ?? existing.workItemRef ?? workItemRef,
             stage: input.stage ?? existing.stage,
             batonHolder: input.batonHolder ?? existing.batonHolder,
             nextSkill: input.nextSkill !== undefined ? input.nextSkill : existing.nextSkill,
@@ -101,6 +110,7 @@ function createInMemoryWorkflowSopStore() {
         : {
             featureId,
             backlogItemId,
+            workItemRef,
             stage: input.stage ?? 'kickoff',
             batonHolder: input.batonHolder ?? updatedBy,
             nextSkill: input.nextSkill !== undefined ? input.nextSkill : null,

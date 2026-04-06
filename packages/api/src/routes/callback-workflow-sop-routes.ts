@@ -29,6 +29,15 @@ const updateWorkflowSopCallbackSchema = callbackAuthSchema.extend({
     })
     .optional(),
   expectedVersion: z.number().int().optional(),
+  // F152 Phase B: optional workItemRef for multi-methodology support
+  workItemRef: z
+    .object({
+      methodology: z.enum(['cat-cafe', 'napm', 'minimal']),
+      projectId: z.string().min(1),
+      kind: z.enum(['feature', 'task', 'slice']),
+      id: z.string().min(1),
+    })
+    .optional(),
 });
 
 export function registerCallbackWorkflowSopRoutes(
@@ -48,7 +57,7 @@ export function registerCallbackWorkflowSopRoutes(
       return { error: 'Invalid request body', details: parsed.error.issues };
     }
 
-    const { invocationId, callbackToken, backlogItemId, featureId, ...rest } = parsed.data;
+    const { invocationId, callbackToken, backlogItemId, featureId, workItemRef, ...rest } = parsed.data;
     const record = registry.verify(invocationId, callbackToken);
     if (!record) {
       reply.status(401);
@@ -73,6 +82,7 @@ export function registerCallbackWorkflowSopRoutes(
         ...(rest.resumeCapsule !== undefined ? { resumeCapsule: rest.resumeCapsule } : {}),
         ...(rest.checks !== undefined ? { checks: rest.checks } : {}),
         ...(rest.expectedVersion !== undefined ? { expectedVersion: rest.expectedVersion } : {}),
+        ...(workItemRef !== undefined ? { workItemRef } : {}),
       } as import('@cat-cafe/shared').UpdateWorkflowSopInput;
 
       const sop = await workflowSopStore.upsert(backlogItemId, featureId, input, updatedBy);

@@ -1,6 +1,8 @@
 // F073 P1: Mission Hub 告示牌 — WorkflowSop types
 // 告示牌哲学：存信息，不控制流程。猫看了自己决定行动。
 
+import type { WorkItemRef } from './work-item.js';
+
 export type SopStage = 'kickoff' | 'impl' | 'quality_gate' | 'review' | 'merge' | 'completion';
 
 export type CheckStatus = 'attested' | 'verified' | 'unknown';
@@ -21,6 +23,8 @@ export interface SopChecks {
 export interface WorkflowSop {
   readonly featureId: string;
   readonly backlogItemId: string;
+  /** F152 Phase B: unified work item reference (dual-write with featureId/backlogItemId) */
+  readonly workItemRef?: WorkItemRef;
   readonly stage: SopStage;
   readonly batonHolder: string;
   readonly nextSkill: string | null;
@@ -38,4 +42,6 @@ export interface UpdateWorkflowSopInput {
   readonly resumeCapsule?: Partial<ResumeCapsule>;
   readonly checks?: Partial<SopChecks>;
   readonly expectedVersion?: number;
+  /** F152 Phase B: if provided, dual-written alongside featureId/backlogItemId */
+  readonly workItemRef?: WorkItemRef;
 }
