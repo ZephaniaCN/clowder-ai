@@ -441,3 +441,11 @@ export type {
   UpdateWorkflowSopInput,
   WorkflowSop,
 } from './workflow-sop.js';
+// Health check types (F152 Phase C)
+export type {
+  HealthCheckCategory,
+  HealthCheckFinding,
+  HealthCheckSeverity,
+  HealthChecker,
+  HealthReport,
+} from './health-check.js';

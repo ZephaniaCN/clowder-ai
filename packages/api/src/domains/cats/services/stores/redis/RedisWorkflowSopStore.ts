@@ -76,6 +76,37 @@ export class RedisWorkflowSopStore implements IWorkflowSopStore {
     }
   }
 
+  private get keyPrefix(): string {
+    return (this.redis.options as { keyPrefix?: string }).keyPrefix ?? '';
+  }
+
+  private stripPrefix(rawKey: string): string {
+    const prefix = this.keyPrefix;
+    return prefix && rawKey.startsWith(prefix) ? rawKey.slice(prefix.length) : rawKey;
+  }
+
+  async listAll(): Promise<WorkflowSop[]> {
+    const matchPattern = `${this.keyPrefix}${WorkflowSopKeys.detail('*')}`;
+    const results: WorkflowSop[] = [];
+    let cursor = '0';
+    do {
+      const [nextCursor, keys] = await this.redis.scan(cursor, 'MATCH', matchPattern, 'COUNT', 200);
+      cursor = nextCursor;
+      if (keys.length === 0) continue;
+      const strippedKeys = keys.map((key) => this.stripPrefix(key));
+      const values = await this.redis.mget(...strippedKeys);
+      for (const raw of values) {
+        if (!raw) continue;
+        try {
+          results.push(JSON.parse(raw) as WorkflowSop);
+        } catch {
+          /* ignore malformed rows */
+        }
+      }
+    } while (cursor !== '0');
+    return results;
+  }
+
   async upsert(
     backlogItemId: string,
     featureId: string,

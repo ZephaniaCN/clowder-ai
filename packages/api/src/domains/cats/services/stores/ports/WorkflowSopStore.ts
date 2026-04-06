@@ -11,6 +11,7 @@ export class VersionConflictError extends Error {
 
 export interface IWorkflowSopStore {
   get(backlogItemId: string): Promise<WorkflowSop | null>;
+  listAll?(): Promise<WorkflowSop[]>;
   upsert(
     backlogItemId: string,
     featureId: string,

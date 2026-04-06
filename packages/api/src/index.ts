@@ -130,6 +130,7 @@ import {
   externalProjectRoutes,
   featureDocDetailRoutes,
   governanceStatusRoute,
+  healthCheckRoutes,
   intentCardRoutes,
   invocationsRoutes,
   leaderboardEventsRoutes,
@@ -1134,6 +1135,7 @@ async function main(): Promise<void> {
   const refluxPatternStore = new RefluxPatternStore();
   await app.register(externalProjectRoutes, { externalProjectStore, needAuditFrameStore, backlogStore });
   await app.register(intentCardRoutes, { externalProjectStore, intentCardStore });
+  await app.register(healthCheckRoutes, { backlogStore, ...(workflowSopStore ? { workflowSopStore } : {}) });
   await app.register(resolutionRoutes, { externalProjectStore, resolutionStore });
   await app.register(sliceRoutes, { externalProjectStore, sliceStore });
   await app.register(refluxRoutes, { externalProjectStore, refluxPatternStore });
