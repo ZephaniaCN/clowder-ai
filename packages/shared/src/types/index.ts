@@ -118,6 +118,7 @@ export type {
   ContextBudget,
   CredentialEntry,
   MissionHubSelfClaimScope,
+  SelfClaimMethodologyOverride,
   // F032: Roster types for collaboration rules
   ReviewPolicy,
   Roster,
@@ -431,6 +432,7 @@ export type {
   WorkItemRef,
   WorkItemSource,
   WorkItemSourceType,
+  WorkItemStats,
 } from './work-item.js';
 // Workflow SOP types (F073 告示牌)
 export type {

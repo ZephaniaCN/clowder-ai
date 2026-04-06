@@ -61,6 +61,7 @@ export { ttsRoutes } from './tts.js';
 export { uploadsRoutes } from './uploads.js';
 export { usageRoutes } from './usage.js';
 export { voteRoutes } from './votes.js';
+export { workItemsRoutes } from './work-items.js';
 export { workflowSopRoutes } from './workflow-sop.js';
 export { workspaceRoutes } from './workspace.js';
 export { workspaceEditRoutes } from './workspace-edit.js';

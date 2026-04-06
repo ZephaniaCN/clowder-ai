@@ -90,3 +90,11 @@ export interface NapmEvidenceEntry {
   readonly sourcePath: string;
   readonly refs: readonly string[];
 }
+
+export interface WorkItemStats {
+  readonly total: number;
+  readonly byStatus: Readonly<Record<string, number>>;
+  readonly byMethodology: Readonly<Record<string, number>>;
+  readonly byOwner: Readonly<Record<string, number>>;
+  readonly byPriority: Readonly<Record<string, number>>;
+}
