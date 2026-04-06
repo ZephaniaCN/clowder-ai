@@ -5,7 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
@@ -729,7 +729,9 @@ test('emits wrapped thinking from local Gemini session snapshots when available'
   process.env.HOME = fakeHome;
 
   try {
-    const promise = collect(service.invoke('test thinking', { workingDirectory: '/Users/liuzifan/Projects/clowder-ai' }));
+    const promise = collect(
+      service.invoke('test thinking', { workingDirectory: '/Users/liuzifan/Projects/clowder-ai' }),
+    );
 
     emitGeminiEvents(proc, [
       { type: 'init', session_id: 'gem-s1', model: 'gemini-3.1-pro-preview' },
@@ -771,6 +773,73 @@ test('emits wrapped thinking from local Gemini session snapshots when available'
   }
 });
 
+test('emits wrapped thinking from multi-message Gemini local session snapshots when a full run matches', async () => {
+  const proc = createMockProcess();
+  const spawnFn = createMockSpawnFn(proc);
+  const service = new GeminiAgentService({ spawnFn, adapter: 'gemini-cli' });
+
+  const fakeHome = mkdtempSync(join(tmpdir(), 'gemini-home-'));
+  const sessionDir = join(fakeHome, '.gemini', 'tmp', 'clowder-ai', 'chats');
+  mkdirSync(sessionDir, { recursive: true });
+  const previousHome = process.env.HOME;
+  process.env.HOME = fakeHome;
+
+  try {
+    const promise = collect(
+      service.invoke('test multi thinking', { workingDirectory: '/Users/liuzifan/Projects/clowder-ai' }),
+    );
+
+    emitGeminiEvents(proc, [
+      { type: 'init', session_id: 'gem-s2', model: 'gemini-3.1-pro-preview' },
+      { type: 'message', role: 'assistant', content: 'First chunk.', delta: true },
+      { type: 'message', role: 'assistant', content: 'Second chunk.', delta: true },
+      { type: 'result', status: 'success', stats: { total_tokens: 234 } },
+    ]);
+
+    writeFileSync(
+      join(sessionDir, 'session-2026-04-06T12-30-multi.json'),
+      JSON.stringify(
+        {
+          sessionId: 'gem-s2',
+          messages: [
+            {
+              id: 'u1',
+              type: 'user',
+              content: [{ text: 'test multi thinking' }],
+            },
+            {
+              id: 'g1',
+              type: 'gemini',
+              content: 'First chunk.',
+              thoughts: [{ subject: 'Planning', description: 'First think.' }],
+            },
+            {
+              id: 'g2',
+              type: 'gemini',
+              content: 'Second chunk.',
+              thoughts: [{ subject: 'Checking', description: 'Second think.' }],
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
+
+    const msgs = await promise;
+    const thinkingMsg = msgs.find((m) => m.type === 'system_info' && m.content.includes('"type":"thinking"'));
+    assert.ok(thinkingMsg, 'should emit thinking system_info from a matched gemini message run');
+    const parsed = JSON.parse(thinkingMsg.content);
+    assert.equal(parsed.type, 'thinking');
+    assert.match(parsed.text, /\*\*Planning\*\*/);
+    assert.match(parsed.text, /\*\*Checking\*\*/);
+    assert.match(parsed.text, /First think\./);
+    assert.match(parsed.text, /Second think\./);
+  } finally {
+    process.env.HOME = previousHome;
+  }
+});
+
 test('skips Gemini local thinking hydration when the latest session content does not match this reply', async () => {
   const proc = createMockProcess();
   const spawnFn = createMockSpawnFn(proc);
@@ -783,7 +852,9 @@ test('skips Gemini local thinking hydration when the latest session content does
   process.env.HOME = fakeHome;
 
   try {
-    const promise = collect(service.invoke('test mismatch', { workingDirectory: '/Users/liuzifan/Projects/clowder-ai' }));
+    const promise = collect(
+      service.invoke('test mismatch', { workingDirectory: '/Users/liuzifan/Projects/clowder-ai' }),
+    );
 
     emitGeminiEvents(proc, [
       { type: 'init', session_id: 'gem-s2', model: 'gemini-3.1-pro-preview' },

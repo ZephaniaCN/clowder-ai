@@ -57,6 +57,22 @@ function normalizeGeminiContent(value: string | undefined): string {
   return (value ?? '').replace(/\s+/g, ' ').trim();
 }
 
+function isGeminiTextMessage(
+  message: GeminiStoredMessage | undefined,
+): message is GeminiStoredMessage & { readonly type: 'gemini'; readonly content: string } {
+  return message?.type === 'gemini' && typeof message.content === 'string';
+}
+
+function isThoughtfulGeminiMessage(
+  message: GeminiStoredMessage | undefined,
+): message is GeminiStoredMessage & {
+  readonly type: 'gemini';
+  readonly content: string;
+  readonly thoughts: readonly GeminiStoredThought[];
+} {
+  return isGeminiTextMessage(message) && Array.isArray(message.thoughts) && message.thoughts.length > 0;
+}
+
 function formatGeminiThoughts(thoughts: readonly GeminiStoredThought[]): string {
   return thoughts
     .map((thought) => {
@@ -69,6 +85,44 @@ function formatGeminiThoughts(thoughts: readonly GeminiStoredThought[]): string 
     })
     .filter((chunk) => chunk.length > 0)
     .join('\n\n---\n\n');
+}
+
+function formatGeminiThoughtRun(messages: readonly GeminiStoredMessage[]): string | null {
+  const thoughts = messages.flatMap((message) => (Array.isArray(message.thoughts) ? message.thoughts : []));
+  const formatted = formatGeminiThoughts(thoughts);
+  return formatted.length > 0 ? formatted : null;
+}
+
+function buildGeminiThoughtRuns(messages: readonly GeminiStoredMessage[]): GeminiStoredMessage[][] {
+  const runs: GeminiStoredMessage[][] = [];
+  let currentRun: GeminiStoredMessage[] = [];
+
+  for (const message of messages) {
+    if (isGeminiTextMessage(message)) {
+      currentRun.push(message);
+      continue;
+    }
+
+    if (currentRun.length > 0) {
+      runs.push(currentRun);
+      currentRun = [];
+    }
+  }
+
+  if (currentRun.length > 0) {
+    runs.push(currentRun);
+  }
+
+  return runs.filter((run) => run.some((message) => isThoughtfulGeminiMessage(message)));
+}
+
+function normalizeGeminiRunContent(messages: readonly GeminiStoredMessage[]): string {
+  return normalizeGeminiContent(
+    messages
+      .filter((message) => typeof message.content === 'string')
+      .map((message) => message.content)
+      .join('\n\n'),
+  );
 }
 
 function readGeminiThinkingFromLocalSession(
@@ -110,20 +164,31 @@ function readGeminiThinkingFromLocalSession(
         const parsed = JSON.parse(readFileSync(file.path, 'utf8')) as GeminiStoredSession;
         if (parsed.sessionId !== sessionId || !Array.isArray(parsed.messages)) continue;
 
-        const candidates = parsed.messages.filter(
-          (message): message is GeminiStoredMessage =>
-            message?.type === 'gemini' &&
-            Array.isArray(message.thoughts) &&
-            message.thoughts.length > 0 &&
-            typeof message.content === 'string',
+        const candidates = parsed.messages.filter((message): message is GeminiStoredMessage =>
+          isThoughtfulGeminiMessage(message),
         );
-        if (candidates.length === 0) return null;
+        const thoughtRuns = buildGeminiThoughtRuns(parsed.messages);
+        if (candidates.length === 0 && thoughtRuns.length === 0) return null;
 
         const exact =
           normalizedAssistantText.length > 0
-            ? [...candidates].reverse().find((message) => normalizeGeminiContent(message.content) === normalizedAssistantText)
+            ? [...candidates]
+                .reverse()
+                .find((message) => normalizeGeminiContent(message.content) === normalizedAssistantText)
             : candidates[candidates.length - 1];
-        const selected = exact ?? null;
+        if (exact) {
+          return formatGeminiThoughts(exact.thoughts ?? []) || null;
+        }
+
+        const matchingRun =
+          normalizedAssistantText.length > 0
+            ? [...thoughtRuns].reverse().find((run) => normalizeGeminiRunContent(run) === normalizedAssistantText)
+            : thoughtRuns[thoughtRuns.length - 1];
+        if (matchingRun) {
+          return formatGeminiThoughtRun(matchingRun);
+        }
+
+        const selected = candidates[candidates.length - 1] ?? null;
         return selected ? formatGeminiThoughts(selected.thoughts ?? []) || null : null;
       } catch {
         // Best effort: skip malformed/partial session files while Gemini is still writing them.
@@ -344,7 +409,11 @@ export class GeminiAgentService implements AgentService {
         }
       }
 
-      const thinking = readGeminiThinkingFromLocalSession(metadata.sessionId, fullAssistantText, options?.workingDirectory);
+      const thinking = readGeminiThinkingFromLocalSession(
+        metadata.sessionId,
+        fullAssistantText,
+        options?.workingDirectory,
+      );
       if (thinking) {
         yield {
           type: 'system_info',
