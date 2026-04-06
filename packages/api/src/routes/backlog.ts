@@ -1,4 +1,11 @@
-import type { BacklogDependencies, BacklogItem, CatId, MissionHubSelfClaimScope, ThreadPhase } from '@cat-cafe/shared';
+import type {
+  BacklogDependencies,
+  BacklogItem,
+  CatId,
+  MissionHubSelfClaimScope,
+  ThreadPhase,
+  WorkItemRef,
+} from '@cat-cafe/shared';
 import { catIdSchema, catRegistry } from '@cat-cafe/shared';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
@@ -285,9 +292,16 @@ export const backlogRoutes: FastifyPluginAsync<BacklogRoutesOptions> = async (ap
       return { statusCode: 404 as const, payload: { error: 'Backlog item not found' } };
     }
 
-    // Step 5: Link thread → backlog item (best-effort)
+    // Step 5: Link thread → backlog item + workItemRef (best-effort, dual-write)
     try {
       await threadStore.linkBacklogItem(threadId, item.id);
+      const ref: WorkItemRef = {
+        methodology: 'cat-cafe',
+        projectId: item.projectId ?? item.id.toLowerCase(),
+        kind: 'feature',
+        id: item.id,
+      };
+      await threadStore.linkWorkItemRef(threadId, ref);
     } catch (err) {
       app.log.warn(
         { err, threadId, backlogItemId: item.id },

@@ -7,7 +7,7 @@
  * DELETE /api/threads/:id  - 删除对话
  */
 
-import type { CatId } from '@cat-cafe/shared';
+import type { CatId, WorkItemRef } from '@cat-cafe/shared';
 import { catIdSchema } from '@cat-cafe/shared';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
@@ -99,6 +99,15 @@ const createThreadSchema = z
     pinned: z.boolean().optional(),
     /** F095 Phase C: Associate thread with a backlog item at creation */
     backlogItemId: z.string().min(1).max(100).optional(),
+    /** F152 Phase B B3: Generalized work-item reference for multi-methodology support. */
+    workItemRef: z
+      .object({
+        methodology: z.enum(['cat-cafe', 'napm', 'minimal']),
+        projectId: z.string().min(1),
+        kind: z.enum(['feature', 'task', 'slice']),
+        id: z.string().min(1),
+      })
+      .optional(),
     /** F087: Initial bootcamp state */
     bootcampState: bootcampStateSchema.optional(),
   })
@@ -201,7 +210,8 @@ export const threadsRoutes: FastifyPluginAsync<ThreadsRoutesOptions> = async (ap
       return { error: 'Invalid request body', details: parseResult.error.issues };
     }
 
-    const { userId: legacyUserId, title, projectPath, preferredCats, pinned, backlogItemId } = parseResult.data;
+    const { userId: legacyUserId, title, projectPath, preferredCats, pinned, backlogItemId, workItemRef } =
+      parseResult.data;
     const userId = resolveUserId(request, { fallbackUserId: legacyUserId });
     if (!userId) {
       reply.status(401);
@@ -241,10 +251,21 @@ export const threadsRoutes: FastifyPluginAsync<ThreadsRoutesOptions> = async (ap
         }
       }
       await threadStore.linkBacklogItem(thread.id, backlogItemId);
+      // F152 B3 dual-write: auto-derive workItemRef from backlogItemId when not explicitly provided
+      const ref: WorkItemRef = workItemRef ?? {
+        methodology: 'cat-cafe',
+        projectId: backlogItemId.toLowerCase(),
+        kind: 'feature',
+        id: backlogItemId,
+      };
+      await threadStore.linkWorkItemRef(thread.id, ref);
+    } else if (workItemRef) {
+      // F152 B3: explicit workItemRef without backlogItemId (non-cat-cafe methodologies)
+      await threadStore.linkWorkItemRef(thread.id, workItemRef);
     }
 
     // Re-fetch if any post-create mutations applied
-    if ((preferredCats && preferredCats.length > 0) || pinned || backlogItemId) {
+    if ((preferredCats && preferredCats.length > 0) || pinned || backlogItemId || workItemRef) {
       thread = (await threadStore.get(thread.id)) ?? thread;
     }
 

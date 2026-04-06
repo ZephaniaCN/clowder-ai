@@ -6,7 +6,7 @@
  * Phase 3.3 可扩展 Redis 版本。
  */
 
-import type { CatId, ThreadPhase } from '@cat-cafe/shared';
+import type { CatId, ThreadPhase, WorkItemRef } from '@cat-cafe/shared';
 import { generateThreadId } from '@cat-cafe/shared';
 
 /** Default thread ID for the lobby (backwards-compatible single-thread mode) */
@@ -108,6 +108,8 @@ export interface Thread {
   phase?: ThreadPhase;
   /** F049 Phase2: reverse link for backlog dispatch provenance */
   backlogItemId?: string;
+  /** F152 Phase B: Generalized work-item reference (methodology + projectId + kind + id). */
+  workItemRef?: WorkItemRef;
   /** F042: Thread-scoped routing policy (by intent/scope). */
   routingPolicy?: ThreadRoutingPolicyV1;
   /** F065 Phase B: Rolling memory across sealed sessions */
@@ -208,6 +210,8 @@ export interface IThreadStore {
   updatePreferredCats(threadId: string, catIds: CatId[]): void | Promise<void>;
   updatePhase(threadId: string, phase: ThreadPhase): void | Promise<void>;
   linkBacklogItem(threadId: string, backlogItemId: string): void | Promise<void>;
+  /** F152 Phase B B3: Link a generalized work-item reference to the thread. */
+  linkWorkItemRef(threadId: string, ref: WorkItemRef): void | Promise<void>;
   /**
    * F046 D3: Persist one-shot feedback for suppressed A2A mentions.
    * The next invocation of this cat in this thread should consume and clear it.
@@ -450,6 +454,11 @@ export class ThreadStore implements IThreadStore {
   linkBacklogItem(threadId: string, backlogItemId: string): void {
     const thread = this.get(threadId);
     if (thread) thread.backlogItemId = backlogItemId;
+  }
+
+  linkWorkItemRef(threadId: string, ref: WorkItemRef): void {
+    const thread = this.get(threadId);
+    if (thread) thread.workItemRef = ref;
   }
 
   setMentionRoutingFeedback(threadId: string, catId: CatId, feedback: ThreadMentionRoutingFeedback): void {

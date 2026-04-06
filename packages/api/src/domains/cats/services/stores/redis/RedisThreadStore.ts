@@ -10,7 +10,7 @@
  * TTL 默认 30 天。
  */
 
-import type { CatId, ThreadPhase } from '@cat-cafe/shared';
+import type { CatId, ThreadPhase, WorkItemRef } from '@cat-cafe/shared';
 import { generateThreadId } from '@cat-cafe/shared';
 import type { RedisClient } from '@cat-cafe/shared/utils';
 import type {
@@ -349,6 +349,11 @@ export class RedisThreadStore implements IThreadStore {
     await this.redis.eval(HSET_IF_HAS_ID_LUA, 1, key, 'backlogItemId', backlogItemId);
   }
 
+  async linkWorkItemRef(threadId: string, ref: WorkItemRef): Promise<void> {
+    const key = ThreadKeys.detail(threadId);
+    await this.redis.eval(HSET_IF_HAS_ID_LUA, 1, key, 'workItemRef', JSON.stringify(ref));
+  }
+
   async setMentionRoutingFeedback(
     threadId: string,
     catId: CatId,
@@ -634,6 +639,16 @@ export class RedisThreadStore implements IThreadStore {
     }
     if (data.backlogItemId) {
       result.backlogItemId = data.backlogItemId;
+    }
+    if (data.workItemRef) {
+      try {
+        const parsed = JSON.parse(data.workItemRef);
+        if (parsed && typeof parsed === 'object' && parsed.methodology) {
+          result.workItemRef = parsed as WorkItemRef;
+        }
+      } catch {
+        /* ignore malformed JSON */
+      }
     }
     if (data.preferredCats) {
       try {

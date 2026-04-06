@@ -656,11 +656,14 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
                   signal,
                 )
               : null;
+          // F152 B3: prefer thread's own workItemRef, fall back to SOP-derived ref
+          const threadWorkItemRef =
+            thread.workItemRef ?? (sop ? resolveWorkItemRef(sop) : undefined);
           capturedMissionPack = buildMissionPack({
             title: thread.title ?? undefined,
             phase: thread.phase ?? undefined,
             backlogItemId: thread.backlogItemId ?? undefined,
-            ...(sop ? { workItemRef: resolveWorkItemRef(sop) } : {}),
+            ...(threadWorkItemRef ? { workItemRef: threadWorkItemRef } : {}),
           });
           missionPrefix = formatMissionPackPrompt(capturedMissionPack);
         }
