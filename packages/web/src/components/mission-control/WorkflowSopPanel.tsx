@@ -155,10 +155,20 @@ export function WorkflowSopPanel({ backlogItemId }: WorkflowSopPanelProps) {
       {/* Header */}
       <div className="mb-2">
         <h2 className="text-sm font-semibold text-[#2C2118]">SOP 告示牌</h2>
-        <p className="text-[10px] text-[#7B6956]">
-          {sop.workItemRef && sop.workItemRef.methodology !== 'cat-cafe'
-            ? `${sop.workItemRef.methodology}/${sop.workItemRef.projectId}`
-            : sop.featureId}
+        <p className="flex items-center gap-1 text-[10px] text-[#7B6956]">
+          {sop.workItemRef && sop.workItemRef.methodology !== 'cat-cafe' ? (
+            <>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect width="8" height="4" x="8" y="2" rx="1" ry="1" /><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" /><path d="M12 11h4" /><path d="M12 16h4" /><path d="M8 11h.01" /><path d="M8 16h.01" /></svg>
+              <span>
+                {sop.workItemRef.methodology}/{sop.workItemRef.projectId}
+              </span>
+            </>
+          ) : (
+            <>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 5c.67 0 1.35.09 2 .26 1.78-2 5.03-2.1 6.95-.1a4.94 4.94 0 0 1-.1 6.95c.17.65.26 1.33.26 2 .01 5.56-4.44 10.07-10 10.11C5.56 24.18 1.05 19.73 1 14.17c-.01-.67.08-1.35.25-2a4.94 4.94 0 0 1-.1-6.95C3.08 3.27 6.33 3.17 8.11 5.17A9 9 0 0 1 12 5Z" /><path d="M8 14v.5" /><path d="M16 14v.5" /><path d="M11.25 16.25h1.5L12 17l-.75-.75Z" /></svg>
+              <span>{sop.featureId}</span>
+            </>
+          )}
         </p>
       </div>
 
