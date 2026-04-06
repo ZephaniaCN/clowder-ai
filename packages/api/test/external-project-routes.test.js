@@ -632,4 +632,132 @@ describe('External Project Routes', () => {
     assert.equal(patchRes.json().card.goal, 'New Goal');
     assert.equal(patchRes.json().card.originalText, 'T');
   });
+
+  // --- F152: NAPM route integration tests ---
+
+  test('POST /api/external-projects with methodology=napm creates NAPM project', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/external-projects',
+      headers: H,
+      payload: {
+        name: 'napm-test',
+        description: 'NAPM project',
+        sourcePath: '/tmp/napm-test',
+        methodology: 'napm',
+      },
+    });
+    assert.equal(res.statusCode, 201);
+    assert.equal(res.json().project.methodology, 'napm');
+    assert.equal(res.json().project.backlogPath, 'pm/backlog.md');
+  });
+
+  test('POST /api/external-projects rejects invalid methodology', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/external-projects',
+      headers: H,
+      payload: {
+        name: 'bad',
+        description: '',
+        sourcePath: '/tmp/bad',
+        methodology: 'nonexistent',
+      },
+    });
+    assert.equal(res.statusCode, 400);
+    assert.ok(res.json().error.includes('Invalid methodology'));
+  });
+
+  test('POST import-backlog blocks NAPM projects', async () => {
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/external-projects',
+      headers: H,
+      payload: {
+        name: 'napm-block',
+        description: '',
+        sourcePath: '/tmp/napm-block',
+        methodology: 'napm',
+      },
+    });
+    const id = createRes.json().project.id;
+
+    const importRes = await app.inject({
+      method: 'POST',
+      url: `/api/external-projects/${id}/import-backlog`,
+      headers: H,
+    });
+    assert.equal(importRes.statusCode, 400);
+    assert.ok(importRes.json().error.includes('NAPM'));
+  });
+
+  test('GET /napm/overview rejects non-napm project', async () => {
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/external-projects',
+      headers: H,
+      payload: { name: 'cat', description: '', sourcePath: '/tmp/cat' },
+    });
+    const id = createRes.json().project.id;
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/external-projects/${id}/napm/overview`,
+      headers: H,
+    });
+    assert.equal(res.statusCode, 400);
+    assert.ok(res.json().error.includes('cat-cafe'));
+  });
+
+  test('GET /napm/work-items rejects non-napm project', async () => {
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/external-projects',
+      headers: H,
+      payload: { name: 'cat2', description: '', sourcePath: '/tmp/cat2' },
+    });
+    const id = createRes.json().project.id;
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/external-projects/${id}/napm/work-items`,
+      headers: H,
+    });
+    assert.equal(res.statusCode, 400);
+  });
+
+  test('GET /napm/evidence rejects non-napm project', async () => {
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/external-projects',
+      headers: H,
+      payload: { name: 'cat3', description: '', sourcePath: '/tmp/cat3' },
+    });
+    const id = createRes.json().project.id;
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/external-projects/${id}/napm/evidence`,
+      headers: H,
+    });
+    assert.equal(res.statusCode, 400);
+  });
+
+  test('NAPM endpoints require authentication', async () => {
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/external-projects',
+      headers: H,
+      payload: { name: 'np', description: '', sourcePath: '/tmp/np', methodology: 'napm' },
+    });
+    const id = createRes.json().project.id;
+
+    for (const endpoint of ['overview', 'work-items', 'evidence']) {
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/external-projects/${id}/napm/${endpoint}`,
+      });
+      assert.equal(res.statusCode, 401, `${endpoint} should require auth`);
+    }
+  });
 });
