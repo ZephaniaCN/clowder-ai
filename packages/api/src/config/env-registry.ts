@@ -301,7 +301,8 @@ export const ENV_VARS: EnvDefinition[] = [
   {
     name: 'MESSAGE_TTL_SECONDS',
     defaultValue: '604800 (7天)',
-    description: '消息过期时间',
+    description:
+      '消息过期时间（秒）。默认 604800（7天）。设为 0 或负数 → 消息永不过期。注意：过期的 Redis 消息不影响已索引的 evidence_passages（Phase I 保证永久性）。',
     category: 'storage',
     sensitive: false,
   },
@@ -579,6 +580,14 @@ export const ENV_VARS: EnvDefinition[] = [
     hubVisible: false,
   },
   {
+    name: 'CAT_CAFE_DIAGNOSTICS',
+    defaultValue: '(未设置)',
+    description: '设为 1 启用 /api/diagnostics/* 端点（调试用，默认关闭）',
+    category: 'cli',
+    sensitive: false,
+    hubVisible: false,
+  },
+  {
     name: 'CAT_CAFE_DISABLE_SHARED_STATE_PREFLIGHT',
     defaultValue: '(未设置)',
     description: '设为 1 跳过 shared state preflight 检查（CI / 调试用）',
@@ -698,6 +707,27 @@ export const ENV_VARS: EnvDefinition[] = [
     description: '钉钉应用 AppSecret',
     category: 'connector',
     sensitive: true,
+  },
+  {
+    name: 'XIAOYI_AK',
+    defaultValue: '(未设置 → 不启用)',
+    description: '华为小艺 OpenClaw Access Key',
+    category: 'connector',
+    sensitive: false,
+  },
+  {
+    name: 'XIAOYI_SK',
+    defaultValue: '(未设置)',
+    description: '华为小艺 OpenClaw Secret Key',
+    category: 'connector',
+    sensitive: true,
+  },
+  {
+    name: 'XIAOYI_AGENT_ID',
+    defaultValue: '(未设置)',
+    description: '华为小艺 Agent ID',
+    category: 'connector',
+    sensitive: false,
   },
   {
     name: 'FEISHU_BOT_OPEN_ID',
@@ -1132,6 +1162,20 @@ export const ENV_VARS: EnvDefinition[] = [
     sensitive: false,
   },
   {
+    name: 'F102_DURABLE_CANDIDATES',
+    defaultValue: 'off',
+    description: 'Phase G candidate 提取 (off/on)，on = 摘要时提取 durable knowledge 候选到 MarkerQueue',
+    category: 'evidence',
+    sensitive: false,
+  },
+  {
+    name: 'F102_TOPIC_SEGMENTS',
+    defaultValue: 'off',
+    description: 'Phase G topic 分段 (off/on)，on = 摘要按话题切分多个 segment',
+    category: 'evidence',
+    sensitive: false,
+  },
+  {
     name: 'EMBED_URL',
     defaultValue: 'http://127.0.0.1:9880',
     description: 'Embedding 服务地址（独立 Python GPU 进程 scripts/embed-api.py）',
@@ -1142,6 +1186,13 @@ export const ENV_VARS: EnvDefinition[] = [
     name: 'EVIDENCE_DB',
     defaultValue: '{repoRoot}/evidence.sqlite',
     description: 'F102 SQLite 数据库路径',
+    category: 'evidence',
+    sensitive: false,
+  },
+  {
+    name: 'GLOBAL_KNOWLEDGE_DB',
+    defaultValue: '~/.cat-cafe/global_knowledge.sqlite',
+    description: 'F-4: 全局知识 SQLite 路径（Skills + MEMORY.md 编译产物）',
     category: 'evidence',
     sensitive: false,
   },

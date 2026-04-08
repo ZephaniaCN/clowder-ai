@@ -22,8 +22,10 @@ import { HubCommandsTab } from './HubCommandsTab';
 import { HubEnvFilesTab } from './HubEnvFilesTab';
 import { HubGovernanceTab } from './HubGovernanceTab';
 import { HubLeaderboardTab } from './HubLeaderboardTab';
+import { HubMemoryTab } from './HubMemoryTab';
 import { HubProviderProfilesTab } from './HubProviderProfilesTab';
 import { HubRoutingPolicyTab } from './HubRoutingPolicyTab';
+import { HubToolUsageTab } from './HubToolUsageTab';
 import { PushSettingsPanel } from './PushSettingsPanel';
 import { VoiceSettingsPanel } from './VoiceSettingsPanel';
 
@@ -239,12 +241,14 @@ export function CatCafeHub() {
               ) : null)}
             {tab === 'commands' && <HubCommandsTab />}
             {tab === 'routing' && <HubRoutingPolicyTab />}
+            {tab === 'tool-usage' && <HubToolUsageTab />}
             {tab === 'env' && <HubEnvFilesTab />}
             {tab === 'provider-profiles' && <HubProviderProfilesTab />}
             {tab === 'voice' && <VoiceSettingsPanel />}
             {tab === 'notify' && <PushSettingsPanel />}
             {tab === 'governance' && <HubGovernanceTab />}
             {tab === 'health' && <BrakeSettingsPanel />}
+            {tab === 'memory' && <HubMemoryTab />}
             {tab === 'rescue' && <HubClaudeRescueSection />}
             {tab === 'leaderboard' && <HubLeaderboardTab />}
           </div>

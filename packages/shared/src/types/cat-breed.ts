@@ -30,6 +30,8 @@ export interface ContextBudget {
 /**
  * CLI invocation config for a variant
  */
+import type { CliEffortValue } from '../cli-effort.js';
+
 export interface CliConfig {
   readonly command: string; // 'claude' | 'codex' | 'gemini'
   readonly outputFormat: string; // 'stream-json' | 'json'
@@ -40,7 +42,7 @@ export interface CliConfig {
    *   codex:  --config model_reasoning_effort="low|medium|high|xhigh"
    * Default: 'max' (claude) / 'xhigh' (codex)
    */
-  readonly effort?: 'low' | 'medium' | 'high' | 'max' | 'xhigh';
+  readonly effort?: CliEffortValue;
 }
 
 /**

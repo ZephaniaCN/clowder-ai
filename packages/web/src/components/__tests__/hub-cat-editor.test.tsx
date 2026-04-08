@@ -20,6 +20,7 @@ import {
   CLIENT_OPTIONS,
   DEFAULT_ANTIGRAVITY_COMMAND_ARGS,
   filterProfiles,
+  getCliEffortOptionsForClient,
   type HubCatEditorFormState,
   splitCommandArgs,
   validateModelFormatForClient,
@@ -110,6 +111,7 @@ describe('HubCatEditor', () => {
       defaultModel: 'gpt-5.4',
       commandArgs: '',
       cliConfigArgs: [],
+      cliEffort: '',
       ocProviderName: '',
       sessionChain: 'true',
       maxPromptTokens: '',
@@ -153,6 +155,7 @@ describe('HubCatEditor', () => {
       defaultModel: 'gpt-5.4',
       commandArgs: '',
       cliConfigArgs: [],
+      cliEffort: '',
       ocProviderName: '',
       sessionChain: 'true',
       maxPromptTokens: '',
@@ -196,6 +199,7 @@ describe('HubCatEditor', () => {
       defaultModel: 'gemini-bridge',
       commandArgs: '',
       cliConfigArgs: [],
+      cliEffort: '',
       ocProviderName: '',
       sessionChain: 'true',
       maxPromptTokens: '',
@@ -206,6 +210,46 @@ describe('HubCatEditor', () => {
 
     const payload = buildCatPayload(form, null) as Record<string, unknown>;
     expect(payload.commandArgs).toEqual(splitCommandArgs(DEFAULT_ANTIGRAVITY_COMMAND_ARGS));
+  });
+
+  it('exposes provider-aware effort options for Claude and Codex only', () => {
+    expect(getCliEffortOptionsForClient('anthropic')).toEqual(['low', 'medium', 'high', 'max']);
+    expect(getCliEffortOptionsForClient('openai')).toEqual(['low', 'medium', 'high', 'xhigh']);
+    expect(getCliEffortOptionsForClient('opencode')).toBeNull();
+  });
+
+  it('buildCatPayload keeps structured cli.effort separate from raw cliConfigArgs', () => {
+    const form = {
+      catId: 'runtime-codex',
+      name: '运行时缅因猫',
+      displayName: '运行时缅因猫',
+      nickname: '',
+      avatar: '/avatars/codex.png',
+      colorPrimary: '#16a34a',
+      colorSecondary: '#bbf7d0',
+      mentionPatterns: '@runtime-codex',
+      roleDescription: '审查',
+      personality: '严谨',
+      teamStrengths: '',
+      caution: '',
+      strengths: '',
+      client: 'openai',
+      accountRef: 'codex-sponsor',
+      defaultModel: 'gpt-5.4',
+      commandArgs: '',
+      cliConfigArgs: ['--config model_provider="custom"'],
+      cliEffort: 'xhigh',
+      ocProviderName: '',
+      sessionChain: 'true',
+      maxPromptTokens: '',
+      maxContextTokens: '',
+      maxMessages: '',
+      maxContentLengthPerMsg: '',
+    } as HubCatEditorFormState & { cliEffort: string };
+
+    const payload = buildCatPayload(form, null) as Record<string, unknown>;
+    expect(payload.cli).toEqual({ effort: 'xhigh' });
+    expect(payload.cliConfigArgs).toEqual(['--config model_provider="custom"']);
   });
 
   it('splitCommandArgs preserves quoted segments', () => {
