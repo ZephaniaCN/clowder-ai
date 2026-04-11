@@ -12,6 +12,7 @@ import { DependencyGraphTab } from './DependencyGraphTab';
 import { ExternalProjectTab } from './ExternalProjectTab';
 import { extractFeatureId } from './FeatureBirdEyePanel';
 import { FeatureRowList } from './FeatureRowList';
+import { HealthCheckPanel } from './HealthCheckPanel';
 import { ImportProjectModal } from './ImportProjectModal';
 import { NapmProjectTab } from './NapmProjectTab';
 import { QuickCreateForm } from './QuickCreateForm';
@@ -569,6 +570,9 @@ export function MissionControlPage() {
           <StatusDot color="bg-[#5B9BD5]" label={`${activeCount} 执行中`} textColor="text-[#4A7FB5]" />
           <StatusDot color="bg-[#7CB87C]" label={`${doneCount} 已完成`} textColor="text-[#5A9A5A]" />
         </div>
+
+        {/* C2f: Health Check Panel */}
+        <HealthCheckPanel className="mx-6 mt-3" />
 
         {error && (
           <div

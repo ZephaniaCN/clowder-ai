@@ -177,6 +177,10 @@ export interface FeatureDocAC {
   readonly id: string;
   readonly text: string;
   readonly done: boolean;
+  /** C1c: Optional verify command for this AC */
+  readonly verifyCmd?: string;
+  /** C1c: Optional evidence reference for this AC */
+  readonly evidenceRef?: string;
 }
 
 export interface FeatureDocPhase {

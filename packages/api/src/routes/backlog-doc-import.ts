@@ -9,6 +9,7 @@ import type {
   FeatureDocPhase,
   FeatureDocRisk,
 } from '@cat-cafe/shared';
+import { parseFeatureACs } from '@cat-cafe/shared/utils';
 import { gitListFeatureDocs, readBacklogContent, readFeatureDocContent } from './git-doc-reader.js';
 
 export interface BacklogFeatureRow {
@@ -238,17 +239,24 @@ export function parseFeatureDocPhases(markdown: string): FeatureDocPhase[] {
   }
   if (phases.length === 0) return [];
 
-  const acLineRegex = /^-\s+\[([ xX])\]\s+(AC-([A-Z])\d+)[:\s：]+(.+)/gm;
+  // C1c: Use parseFeatureACs to extract ACs with verify/evidence extensions
+  const allParsedACs = parseFeatureACs(markdown);
   const acsByPhase = new Map<string, FeatureDocAC[]>();
-  while ((m = acLineRegex.exec(markdown)) !== null) {
-    const checkbox = m[1];
-    const acId = m[2];
-    const phaseChar = m[3];
-    const acText = m[4];
-    if (!checkbox || !acId || !phaseChar || !acText) continue;
-    const phaseId = phaseChar.toUpperCase();
+
+  for (const ac of allParsedACs) {
+    // Extract phase letter from AC id (e.g., "AC-A1" -> "A")
+    const phaseMatch = ac.id.match(/^AC-([A-Z])\d+$/);
+    if (!phaseMatch) continue;
+    const phaseId = phaseMatch[1];
+
     const list = acsByPhase.get(phaseId) ?? [];
-    list.push({ id: acId, text: acText.trim(), done: checkbox.toLowerCase() === 'x' });
+    list.push({
+      id: ac.id,
+      text: ac.description,
+      done: ac.checked,
+      verifyCmd: ac.verifyCmd,
+      evidenceRef: ac.evidenceRef,
+    });
     acsByPhase.set(phaseId, list);
   }
 

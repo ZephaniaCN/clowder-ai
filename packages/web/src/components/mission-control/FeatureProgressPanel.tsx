@@ -71,29 +71,64 @@ function PhaseRow({ phase, expanded, onToggle }: { phase: FeatureDocPhase; expan
         <span className="shrink-0 text-[10px] text-[#C4B5A0]">{expanded ? '▼' : '▸'}</span>
       </button>
       {expanded && total > 0 && (
-        <div className="ml-[68px] mt-1 space-y-0.5" data-testid={`mc-phase-acs-${phase.id}`}>
+        <div className="ml-[68px] mt-1 space-y-1" data-testid={`mc-phase-acs-${phase.id}`}>
           <p className="mb-1 text-[10px] font-medium text-[#8B7864]">{phase.name}</p>
           {phase.acs.map((ac) => (
-            <div key={ac.id} className="flex items-center gap-1.5 text-[11px]">
-              {ac.done ? (
-                <svg
-                  className="h-3.5 w-3.5 shrink-0 text-[#7CB87C]"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                  <polyline points="22 4 12 14.01 9 11.01" />
-                </svg>
-              ) : (
-                <span className="h-3.5 w-3.5 shrink-0 rounded-full border-[1.5px] border-[#C4B5A0]" />
-              )}
-              <span className={ac.done ? 'text-[#9A866F] line-through' : 'text-[#4B3A2A]'}>
-                {ac.id}: {ac.text}
-              </span>
+            <div key={ac.id} className="text-[11px]">
+              <div className="flex items-start gap-1.5">
+                {ac.done ? (
+                  <svg
+                    className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#7CB87C]"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                    <polyline points="22 4 12 14.01 9 11.01" />
+                  </svg>
+                ) : (
+                  <span className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded-full border-[1.5px] border-[#C4B5A0]" />
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className={ac.done ? 'text-[#9A866F] line-through' : 'text-[#4B3A2A]'}>
+                      {ac.id}: {ac.text}
+                    </span>
+                    {/* C1c: Verify/Evidence badges */}
+                    {ac.verifyCmd && (
+                      <span
+                        className="inline-flex items-center gap-0.5 rounded bg-sky-50 px-1 py-0 text-[9px] font-medium text-sky-700"
+                        title={`验证: ${ac.verifyCmd}`}
+                      >
+                        <svg className="h-2.5 w-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="4 17 10 11 4 5" />
+                          <line x1="12" x2="20" y1="19" y2="19" />
+                        </svg>
+                      </span>
+                    )}
+                    {ac.evidenceRef && (
+                      <span
+                        className="inline-flex items-center gap-0.5 rounded bg-green-50 px-1 py-0 text-[9px] font-medium text-green-700"
+                        title={`证据: ${ac.evidenceRef}`}
+                      >
+                        <svg className="h-2.5 w-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                          <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                        </svg>
+                      </span>
+                    )}
+                  </div>
+                  {/* Show verify command inline for visibility */}
+                  {ac.verifyCmd && (
+                    <p className="mt-0.5 text-[9px] text-sky-600">
+                      {ac.verifyCmd}
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
           ))}
         </div>
