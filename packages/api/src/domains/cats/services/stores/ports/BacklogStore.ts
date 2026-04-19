@@ -62,6 +62,8 @@ export interface IBacklogStore {
   releaseDispatchLock?(itemId: string, token: string): Promise<void>;
   /** Optional: atomic dispatch combining progress update + markDispatched in one operation. */
   atomicDispatch?(itemId: string, input: AtomicDispatchInput): BacklogItem | null | Promise<BacklogItem | null>;
+  /** F076: assign a projectId to an existing orphan item (backfill for historical data). */
+  assignProjectId?(itemId: string, projectId: string): BacklogItem | null | Promise<BacklogItem | null>;
 }
 
 export class BacklogStore implements IBacklogStore {
@@ -562,6 +564,30 @@ export class BacklogStore implements IBacklogStore {
           actor: makeUserActor(input.dispatchedBy),
           timestamp: now,
           detail: `${input.threadId}:${input.threadPhase}`,
+        },
+      ],
+    };
+    this.items.set(itemId, updated);
+    return updated;
+  }
+
+  assignProjectId(itemId: string, projectId: string): BacklogItem | null {
+    const existing = this.items.get(itemId);
+    if (!existing) return null;
+    if (existing.projectId === projectId) return existing;
+    const now = Date.now();
+    const updated: BacklogItem = {
+      ...existing,
+      projectId,
+      updatedAt: now,
+      audit: [
+        ...existing.audit,
+        {
+          id: generateSortableId(now + 1),
+          action: 'refreshed',
+          actor: makeUserActor(existing.userId),
+          timestamp: now,
+          detail: `backfill projectId: ${projectId}`,
         },
       ],
     };

@@ -903,6 +903,7 @@ export class RedisBacklogStore implements IBacklogStore {
     if (item.dispatchAttemptId) result.dispatchAttemptId = item.dispatchAttemptId;
     if (item.pendingThreadId) result.pendingThreadId = item.pendingThreadId;
     if (item.kickoffMessageId) result.kickoffMessageId = item.kickoffMessageId;
+    if (item.projectId) result.projectId = item.projectId;
     return result;
   }
 
@@ -932,6 +933,7 @@ export class RedisBacklogStore implements IBacklogStore {
       ...(data.dispatchAttemptId ? { dispatchAttemptId: data.dispatchAttemptId } : {}),
       ...(data.pendingThreadId ? { pendingThreadId: data.pendingThreadId } : {}),
       ...(data.kickoffMessageId ? { kickoffMessageId: data.kickoffMessageId } : {}),
+      ...(data.projectId ? { projectId: data.projectId } : {}),
       ...(approvedAt ? { approvedAt } : {}),
       ...(dispatchedAt ? { dispatchedAt } : {}),
     };
@@ -997,6 +999,28 @@ export class RedisBacklogStore implements IBacklogStore {
     pipeline.expire(BacklogKeys.detail(item.id), this.ttlSeconds);
     pipeline.expire(BacklogKeys.userList(item.userId), this.ttlSeconds);
     await pipeline.exec();
+  }
+
+  async assignProjectId(itemId: string, projectId: string): Promise<BacklogItem | null> {
+    const existing = await this.get(itemId);
+    if (!existing) return null;
+    if (existing.projectId === projectId) return existing;
+    const now = Date.now();
+    const auditEntry = {
+      id: generateSortableId(now + 1),
+      action: 'refreshed' as const,
+      actor: makeUserActor(existing.userId),
+      timestamp: now,
+      detail: `backfill projectId: ${projectId}`,
+    };
+    const updated: BacklogItem = {
+      ...existing,
+      projectId,
+      updatedAt: now,
+      audit: [...existing.audit, auditEntry],
+    };
+    await this.writeItem(updated);
+    return updated;
   }
 
   async tryAcquireDispatchLock(itemId: string, ttlMs = 30_000): Promise<string | false> {
