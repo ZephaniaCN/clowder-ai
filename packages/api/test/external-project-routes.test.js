@@ -636,7 +636,7 @@ describe('External Project Routes', () => {
     assert.equal(patchRes.json().card.originalText, 'T');
   });
 
-  test('import-backlog does not backfill orphan when project already has bound item', async () => {
+  test('import-backlog skips orphan when bound item exists for same feature', async () => {
     const { mkdtemp, writeFile, mkdir } = await import('node:fs/promises');
     const { join } = await import('node:path');
     const { tmpdir } = await import('node:os');
@@ -695,7 +695,62 @@ describe('External Project Routes', () => {
     const body = importRes.json();
     assert.equal(body.imported, 0);
     assert.equal(body.skipped, 1);
-    assert.equal(body.backfilled, 0);
+    assert.equal(body.orphans, 0);
+
+    // 4. Verify orphan remains unassigned (no auto-backfill in hot path)
+    const orphanAfter = backlogStore.get(orphan.id);
+    assert.equal(orphanAfter.projectId, undefined);
+  });
+
+  test('import-backlog reports orphans without auto-backfill', async () => {
+    const { mkdtemp, writeFile, mkdir } = await import('node:fs/promises');
+    const { join } = await import('node:path');
+    const { tmpdir } = await import('node:os');
+
+    const tmpDir = await mkdtemp(join(tmpdir(), 'import-test-'));
+    const docsDir = join(tmpDir, 'docs');
+    await mkdir(docsDir, { recursive: true });
+    const backlogPath = join(docsDir, 'ROADMAP.md');
+    await writeFile(
+      backlogPath,
+      [
+        '| ID | 名称 | Status | Owner | Link |',
+        '|---|---|---|---|---|',
+        '| F002 | Solo Feature | in-progress | 布偶猫 | [F002](features/F002.md) |',
+      ].join('\n'),
+    );
+
+    // 1. Create project
+    const projRes = await app.inject({
+      method: 'POST',
+      url: '/api/external-projects',
+      headers: H,
+      payload: { name: 'import-test', description: '', sourcePath: tmpDir, backlogPath: 'docs/ROADMAP.md' },
+    });
+    const projectId = projRes.json().project.id;
+
+    // 2. Create an orphan item (no projectId) for F002
+    const orphan = await backlogStore.create({
+      userId: 'user1',
+      title: '[F002] Orphan',
+      summary: 's',
+      priority: 'p2',
+      tags: ['source:docs-backlog', 'feature:f002'],
+      createdBy: 'user',
+    });
+    assert.equal(orphan.projectId, undefined);
+
+    // 3. Import backlog — should report orphan, NOT backfill
+    const importRes = await app.inject({
+      method: 'POST',
+      url: `/api/external-projects/${projectId}/import-backlog`,
+      headers: H,
+    });
+    assert.equal(importRes.statusCode, 200);
+    const body = importRes.json();
+    assert.equal(body.imported, 0);
+    assert.equal(body.skipped, 1);
+    assert.equal(body.orphans, 1);
 
     // 4. Verify orphan remains unassigned
     const orphanAfter = backlogStore.get(orphan.id);

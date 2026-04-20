@@ -117,7 +117,7 @@ export const externalProjectRoutes: FastifyPluginAsync<ExternalProjectRoutesOpti
 
     let created = 0;
     let skipped = 0;
-    let backfilled = 0;
+    let orphans = 0;
     for (const row of rows) {
       const featureId = row.id.toLowerCase();
 
@@ -130,13 +130,12 @@ export const externalProjectRoutes: FastifyPluginAsync<ExternalProjectRoutesOpti
         continue;
       }
 
-      // 2. Try to backfill a single orphan (conservative):
-      //    only assign projectId when there is exactly one orphan for this featureId.
-      //    If multiple orphans exist (from prior buggy imports), skip backfill.
+      // 2. Orphan items exist for this featureId but lack provenance evidence.
+      //    Do NOT auto-backfill in the hot path — cross-project misattribution risk.
+      //    Report orphan count so callers can run a dedicated migration/repair.
       const orphanItems = existingItems.filter((item) => getFeatureTagId(item.tags) === featureId && !item.projectId);
-      if (orphanItems.length === 1 && backlogStore.assignProjectId) {
-        await backlogStore.assignProjectId(orphanItems[0].id, project.id);
-        backfilled++;
+      if (orphanItems.length > 0) {
+        orphans += orphanItems.length;
         skipped++;
         continue;
       }
@@ -147,7 +146,7 @@ export const externalProjectRoutes: FastifyPluginAsync<ExternalProjectRoutesOpti
       created++;
     }
 
-    return reply.send({ imported: created, skipped, total: rows.length, backfilled });
+    return reply.send({ imported: created, skipped, total: rows.length, orphans });
   });
 
   // --- Need Audit Frame routes ---

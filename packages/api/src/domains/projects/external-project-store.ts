@@ -40,8 +40,10 @@ export class ExternalProjectStore {
       updatedAt: now,
     };
     if (this.redis) {
-      await this.redis.hset(ExternalProjectKeys.detail(project.id), this.serializeProject(project));
-      await this.redis.zadd(ExternalProjectKeys.userList(userId), String(now), project.id);
+      const pipeline = this.redis.multi();
+      pipeline.hset(ExternalProjectKeys.detail(project.id), this.serializeProject(project));
+      pipeline.zadd(ExternalProjectKeys.userList(userId), String(now), project.id);
+      await pipeline.exec();
     } else {
       this.fallbackProjects.set(project.id, project);
     }
