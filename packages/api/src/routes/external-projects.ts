@@ -121,6 +121,11 @@ export const externalProjectRoutes: FastifyPluginAsync<ExternalProjectRoutesOpti
     for (const row of rows) {
       const featureId = row.id.toLowerCase();
 
+      const orphanItems = existingItems.filter((item) => getFeatureTagId(item.tags) === featureId && !item.projectId);
+      if (orphanItems.length > 0) {
+        orphans += orphanItems.length;
+      }
+
       // 1. Current project already has this feature bound → skip
       const hasBoundItem = existingItems.some(
         (item) => item.projectId === project.id && getFeatureTagId(item.tags) === featureId,
@@ -131,12 +136,13 @@ export const externalProjectRoutes: FastifyPluginAsync<ExternalProjectRoutesOpti
       }
 
       // 2. Orphan items exist for this featureId but lack provenance evidence.
-      //    Do NOT auto-backfill in the hot path — cross-project misattribution risk.
-      //    Report orphan count so callers can run a dedicated migration/repair.
-      const orphanItems = existingItems.filter((item) => getFeatureTagId(item.tags) === featureId && !item.projectId);
+      //    Do NOT auto-backfill in the hot path — cross-project misattribution risk;
+      //    create a project-bound replacement instead so imports repair visibility
+      //    without mutating historical items that may belong to another project.
       if (orphanItems.length > 0) {
-        orphans += orphanItems.length;
-        skipped++;
+        const input = buildBacklogInputFromFeature(row, userId);
+        await backlogStore.create({ ...input, projectId: project.id });
+        created++;
         continue;
       }
 

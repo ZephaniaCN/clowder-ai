@@ -875,5 +875,3 @@ describe('BacklogStore atomicDispatch', () => {
     assert.equal(result, null);
   });
 });
-
-

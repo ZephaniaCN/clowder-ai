@@ -37,6 +37,36 @@ describe('ExternalProjectStore', () => {
     assert.equal(project.backlogPath, 'BACKLOG.md');
   });
 
+  test('create() writes Redis detail and user index through one transaction', async () => {
+    const mod = await import('../dist/domains/projects/external-project-store.js');
+    const calls = [];
+    const transaction = {
+      hset: (...args) => calls.push(['hset', ...args]),
+      zadd: (...args) => calls.push(['zadd', ...args]),
+      exec: async () => calls.push(['exec']),
+    };
+    const redis = {
+      hset: () => {
+        throw new Error('create() must not write detail outside MULTI');
+      },
+      zadd: () => {
+        throw new Error('create() must not write index outside MULTI');
+      },
+      multi: () => transaction,
+    };
+    const redisStore = new mod.ExternalProjectStore(redis);
+
+    const project = await redisStore.create('user1', { name: 'redis', description: '', sourcePath: '/redis' });
+
+    assert.deepEqual(
+      calls.map(([name]) => name),
+      ['hset', 'zadd', 'exec'],
+    );
+    assert.match(calls[0][1], new RegExp(`^external:project:${project.id}$`));
+    assert.equal(calls[1][1], 'external:projects:user:user1');
+    assert.equal(calls[1][3], project.id);
+  });
+
   test('create() throws if sourcePath is empty', async () => {
     await assert.rejects(
       async () => store.create('user1', { name: 'x', description: '', sourcePath: '' }),

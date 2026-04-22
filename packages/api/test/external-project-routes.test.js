@@ -695,14 +695,14 @@ describe('External Project Routes', () => {
     const body = importRes.json();
     assert.equal(body.imported, 0);
     assert.equal(body.skipped, 1);
-    assert.equal(body.orphans, 0);
+    assert.equal(body.orphans, 1);
 
     // 4. Verify orphan remains unassigned (no auto-backfill in hot path)
     const orphanAfter = backlogStore.get(orphan.id);
     assert.equal(orphanAfter.projectId, undefined);
   });
 
-  test('import-backlog reports orphans without auto-backfill', async () => {
+  test('import-backlog creates a project-bound replacement for orphaned historical data', async () => {
     const { mkdtemp, writeFile, mkdir } = await import('node:fs/promises');
     const { join } = await import('node:path');
     const { tmpdir } = await import('node:os');
@@ -740,7 +740,7 @@ describe('External Project Routes', () => {
     });
     assert.equal(orphan.projectId, undefined);
 
-    // 3. Import backlog — should report orphan, NOT backfill
+    // 3. Import backlog — should report orphan and create a bound replacement, NOT backfill
     const importRes = await app.inject({
       method: 'POST',
       url: `/api/external-projects/${projectId}/import-backlog`,
@@ -748,12 +748,17 @@ describe('External Project Routes', () => {
     });
     assert.equal(importRes.statusCode, 200);
     const body = importRes.json();
-    assert.equal(body.imported, 0);
-    assert.equal(body.skipped, 1);
+    assert.equal(body.imported, 1);
+    assert.equal(body.skipped, 0);
     assert.equal(body.orphans, 1);
 
     // 4. Verify orphan remains unassigned
     const orphanAfter = backlogStore.get(orphan.id);
     assert.equal(orphanAfter.projectId, undefined);
+
+    // 5. Verify the user-visible project list has the recovered feature
+    const projectItems = backlogStore.listByUser('user1').filter((item) => item.projectId === projectId);
+    assert.equal(projectItems.length, 1);
+    assert.equal(projectItems[0].title, '[F002] Solo Feature');
   });
 });
